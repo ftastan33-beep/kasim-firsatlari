@@ -1408,7 +1408,7 @@ class Depo:
             with self.kilit:
                 bildirilen[f"k:{d['id']}"] = int(time.time())
 
-    def gorunenleri_dogrula(self, en_fazla=80, sure_sn=420):
+    def gorunenleri_dogrula(self, en_fazla=50, sure_sn=120):
         """(Site üretimi) Son 24 saatteki ürünlerin fiyatını mağazada kontrol eder; süre ve adet sınırlı."""
         bas = time.time()
         with self.kilit:
