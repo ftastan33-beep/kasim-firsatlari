@@ -9,3 +9,19 @@ GitHub Actions yaklaşık 5 dakikada bir kanalları okur ve siteyi GitHub Pages'
   ad `NTFY_KONU`, değer ntfy uygulamasında abone olunan konu adı.
 
 Bilgisayarda çalıştırmak için: `Kasim-Firsatlari-Baslat.bat` (ayrıntılar `KURULUM.txt`).
+
+## Doğru fiyat kontrolleri (2.8)
+
+- **30 gün kuralı:** mağazadan ve kanallardan kaydedilen fiyatlara göre "indirim" son 30 günün en düşüğüyle kıyaslanır.
+- **Şişirilmiş eski fiyat:** üstü çizili fiyat 60 günde hiç görülmediyse uyarılır; gerçek oran görülen en yüksek fiyata göre yazılır.
+- **Şüpheli düşüş:** 30 günün en düşüğünden %70+ aşağıdaki fiyatlar "kontrol et" olarak işaretlenir, doğrulanmadan Kaçırılmaz'a girmez.
+- **Sepette indirim:** ürün sayfasındaki "Sepette %X / Sepette N TL" etiketi okunur, ödenecek yaklaşık tutar gösterilir.
+- **Barkod (GTIN/EAN) eşleştirme:** mağaza sayfasından okunan barkodla aynı ürün farklı mağazalarda eşleştirilir.
+- **Bayat veri uyarısı:** mağaza fiyatı 1,5 saatten eski okunduysa kartta belirtilir.
+
+## Daha çok ürün
+
+- **Kendi ürününü ekle:** Takibim sekmesine mağaza linki yapıştır; fiyat her yenilemede mağazadan okunur, alarm kurulabilir.
+  Telefondan hızlı ekleme: `http://BILGISAYAR-IP:8765/ekle?url=LİNK` (bkz. `KURULUM.txt` D bölümü).
+- **Takip kelimeleri kanallarda otomatik aranır:** her yenilemede sırayla 3 kelime kanal arşivinde aranır.
+- Kanal sınırı 25'e çıkarıldı; geriye doğru tarama ve 90 günlük arama arşivi sürüyor.

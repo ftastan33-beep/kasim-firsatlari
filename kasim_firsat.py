@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "2.7"
+SURUM = "2.8"
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
 VERI_DOSYASI = os.path.join(VERI_DIZINI, "veri.json")
@@ -76,6 +76,9 @@ ARSIV_OTO_ADET = 5         # her yenilemede geçmişi kanal arşivinden tamamlan
 ARAMA_ARSIV_GUN = 90       # aramada bulunabilecek eski paylaşımların en fazla yaşı (gün)
 ARAMA_ARSIV_EN_FAZLA = 40000
 GERIYE_TARAMA_SN = 60      # her yenilemede kanalların daha eski sayfalarını okumaya ayrılan süre (saniye)
+TAKIP_ARAMA_ADET = 3       # her yenilemede kanallarda otomatik aranacak takip kelimesi sayısı (sırayla döner)
+TAKIBIM = "takibim"        # kullanıcının mağaza bağlantısıyla kendisinin eklediği ürünlerin "kanal" adı
+EN_FAZLA_KANAL = 25
 EN_FAZLA_GONDERI = 4000
 UA = ("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
@@ -683,6 +686,9 @@ def ayni_urun(g, h):
     ga, ha = (g.get("anahtar") or ""), (h.get("anahtar") or "")
     if ga and ha and not ga.startswith("t:") and ga.split(":2el")[0] == ha.split(":2el")[0]:
         return True
+    # Barkod (GTIN/EAN) ikisinde de okunduysa kesin cevap: aynıysa aynı ürün, farklıysa farklı ürün
+    if g.get("gtin") and h.get("gtin"):
+        return g["gtin"] == h["gtin"]
     model = model_kodu(g["baslik"])
     if model and model in (h["baslik"] + " " + h.get("metin", "")).upper():
         return True
@@ -774,6 +780,8 @@ def kacirilmaz_bilgisi(d):
     dogrulanamaz = c.get("durum") == "engellendi" or (d.get("oto_okunamaz") and not c)
     teyit = (d.get("teyit") or {}).get("kanal", 1)
     if not dogru and not (dogrulanamaz and (yas < 3 * 3600 or (teyit >= 2 and yas < 6 * 3600))):
+        return None
+    if d.get("kontrol_et") and not dogru:      # şüpheli ani düşüş mağazada doğrulanmadan "kaçırılmaz" olmaz
         return None
     neden, guc = [], 0
     if "dip" in d["rozetler"]:
@@ -1070,6 +1078,72 @@ def sayfadan_fiyat(h, host):
     return None, None
 
 
+def gtin_coz(x):
+    """JSON-LD Product kaydındaki barkod (GTIN/EAN 8-14 hane); yoksa None. Mağazalar arası ürün eşleştirmenin tek güvenilir yolu."""
+    for alan in ("gtin13", "gtin", "gtin14", "gtin12", "gtin8", "isbn"):
+        v = x.get(alan)
+        if isinstance(v, list):
+            v = v[0] if v else None
+        if v is None:
+            continue
+        s = re.sub(r"\D", "", str(v))
+        if 8 <= len(s) <= 14 and s.strip("0"):
+            return s.zfill(13) if len(s) in (12, 13) else s
+    return None
+
+
+def sayfadan_baslik(h):
+    """Ürün sayfasından ürün adı, görseli ve barkodu: JSON-LD Product → og:title → <title>. (başlık, görsel, gtin) döndürür."""
+    baslik = resim = gtin = None
+    for blok in re.findall(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', h, re.S | re.I):
+        try:
+            veri = json.loads(blok.strip())
+        except ValueError:
+            continue
+        yigin = [veri]
+        while yigin and not baslik:
+            x = yigin.pop()
+            if isinstance(x, list):
+                yigin.extend(x)
+            elif isinstance(x, dict):
+                if str(x.get("@type", "")).lower() == "product" and x.get("name"):
+                    baslik = str(x["name"])
+                    r = x.get("image")
+                    if isinstance(r, list):
+                        r = r[0] if r else None
+                    if isinstance(r, dict):
+                        r = r.get("url") or r.get("contentUrl")
+                    resim = r if isinstance(r, str) else None
+                    gtin = gtin_coz(x)
+                    if not gtin:
+                        for t in (x.get("offers") if isinstance(x.get("offers"), list) else [x.get("offers")]):
+                            if isinstance(t, dict) and (gtin := gtin_coz(t)):
+                                break
+                    break
+                yigin.extend(v for v in x.values() if isinstance(v, (dict, list)))
+        if baslik:
+            break
+    if not gtin:
+        # Sayfa verisinde düz alan olarak yazılmış barkod (Trendyol/Hepsiburada ürün JSON'u)
+        m = re.search(r'"(?:barcode|gtin|ean|gtin13)"\s*:\s*"?(\d{8,14})"?', h)
+        if m:
+            gtin = gtin_coz({"gtin": m.group(1)})
+    if not baslik:
+        m = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', h, re.I) or \
+            re.search(r'<meta[^>]+content="([^"]+)"[^>]+property="og:title"', h, re.I) or \
+            re.search(r"<title[^>]*>([^<]+)</title>", h, re.I)
+        if m:
+            baslik = m.group(1)
+    if not resim:
+        m = re.search(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', h, re.I)
+        resim = m.group(1) if m else None
+    if baslik:
+        baslik = html.unescape(baslik)
+        baslik = re.sub(r"\s*[|\-–]\s*(?:Amazon\.com\.tr|Trendyol|Hepsiburada|n11\.com|n11|Teknosa|MediaMarkt|Vatan Bilgisayar|Pazarama|Çiçeksepeti).*$", "", baslik, flags=re.I)
+        baslik = re.sub(r"\s+", " ", baslik).strip()[:160] or None
+    return baslik, (html.unescape(resim) if resim and resim.startswith("http") else None), gtin
+
+
 def canli_fiyat_getir(url):
     """Mağaza sayfasını bir kez açar, güncel fiyatı okur. Sonuç: durum ok / engellendi / bulunamadi / hata."""
     if not url or not guvenli_dis_adres(url):
@@ -1111,21 +1185,72 @@ def canli_fiyat_getir(url):
                 "son_url": son}
     stok_yok = bool(re.search(r"OutOfStock|Stokta yok|Tükendi|şu anda mevcut değil|Currently unavailable", h, re.I)) \
         and not re.search(r"InStock", h)
+    baslik, resim, gtin = sayfadan_baslik(h)
     return {"durum": "ok", "fiyat": fiyat, "yontem": yontem, "son_url": son, "magaza": magaza_alani(son),
-            "stok_yok": stok_yok, "kampanyalar": sayfa_kampanyalari(h, host)}
+            "stok_yok": stok_yok, "kampanyalar": sayfa_kampanyalari(h, host), "baslik": baslik, "resim": resim, "gtin": gtin}
+
+
+SEPETTE_YUZDE_RE = re.compile(r"sepette\s*(?:ek\s*)?%\s*(\d{1,2})(?!\d)|sepette\s*(?:ek\s*)?(\d{1,2})\s*%", re.I)
+SEPETTE_TUTAR_RE = re.compile(r"sepette\s*(?:ek\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?)\s*(?:TL|₺)\s*(?:indirim|ind\.)", re.I)
+SEPETTE_FIYAT_RE = re.compile(r"sepette\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{2,6}(?:,\d{1,2})?)\s*(?:TL|₺)(?!\s*(?:indirim|ind\.|ve üzeri|üzeri))", re.I)
+
+
+def sepette_indirim_bul(h):
+    """Ürün sayfasındaki 'Sepette %10 indirim' / 'Sepette 200 TL indirim' / 'Sepette 1.299 TL' etiketleri.
+    Liste fiyatı ile ödenecek tutar farklı olduğunda bunu görmek yanlış fiyattan almayı önler.
+    Dönen: {"yuzde": 10} ya da {"tutar": 200} ya da {"fiyat": 1299.0} (ilk bulunan); yoksa None."""
+    # Sayfanın görünen metni ile sayfa içindeki JSON verisi birlikte taranır; script/style gürültüsü azaltılır
+    metin = html.unescape(re.sub(r"<style.*?</style>", " ", h, flags=re.S | re.I))
+    metin = re.sub(r"<[^>]+>", " ", metin)
+    m = SEPETTE_YUZDE_RE.search(metin)
+    if m:
+        y = int(m.group(1) or m.group(2))
+        if 1 <= y <= 90:
+            return {"yuzde": y}
+    m = SEPETTE_TUTAR_RE.search(metin)
+    if m and (t := _fiyat_metinden(m.group(1))):
+        return {"tutar": t}
+    m = SEPETTE_FIYAT_RE.search(metin)
+    if m and (t := _fiyat_metinden(m.group(1))):
+        return {"fiyat": t}
+    return None
 
 
 def sayfa_kampanyalari(h, host):
-    """Ürün sayfasında görünen adet/sepet kampanyaları (şimdilik Amazon'un kampanya kutusu)."""
-    if "amazon." not in host:
-        return None          # bu mağazanın sayfası kampanyaları göstermiyor → bilinmiyor
+    """Ürün sayfasında görünen adet/sepet kampanyaları: Amazon'un kampanya kutusu + tüm mağazalarda 'Sepette …' etiketi."""
     sonuc = []
-    for m in re.finditer(r'id="promoMessage[a-z0-9]+"[^>]*>(.{0,800}?)</(?:span|div)>', h, re.S):
-        t = html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))
-        t = re.sub(r"\s+", " ", t).replace(" uygun ürünler", "").strip(" .")
-        if t and t not in sonuc:
-            sonuc.append(t[:140])
+    if "amazon." in host:
+        for m in re.finditer(r'id="promoMessage[a-z0-9]+"[^>]*>(.{0,800}?)</(?:span|div)>', h, re.S):
+            t = html.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))
+            t = re.sub(r"\s+", " ", t).replace(" uygun ürünler", "").strip(" .")
+            if t and t not in sonuc:
+                sonuc.append(t[:140])
+    s = sepette_indirim_bul(h)
+    if s:
+        if "yuzde" in s:
+            sonuc.append(f"Sepette %{s['yuzde']} indirim")
+        elif "tutar" in s:
+            sonuc.append(f"Sepette {fiyat_yaz(s['tutar'])} indirim")
+        else:
+            sonuc.append(f"Sepette {fiyat_yaz(s['fiyat'])}")
+    if not sonuc and "amazon." not in host:
+        return None          # bu mağazanın sayfasında kampanya görünmüyor → bilinmiyor
     return sonuc
+
+
+def sepet_fiyati_tahmini(sayfa, kampanyalar):
+    """'Sepette …' etiketinden ödenecek tutarı hesaplar; yoksa None."""
+    for k in kampanyalar or []:
+        s = sepette_indirim_bul(k)
+        if not s:
+            continue
+        if "yuzde" in s:
+            return round(sayfa * (100 - s["yuzde"]) / 100, 2)
+        if "tutar" in s and s["tutar"] < sayfa:
+            return round(sayfa - s["tutar"], 2)
+        if "fiyat" in s and s["fiyat"] < sayfa:
+            return s["fiyat"]
+    return None
 
 
 def kampanyali_birim(sayfa, kampanyalar):
@@ -1163,6 +1288,28 @@ def canli_karar(g, sayfa, gk, sonuc_kamp=None):
     p = g.get("fiyat")
     sepette = bool(g.get("sepet_fiyati") or g.get("kodlar") or g.get("kupon_tutar") or g.get("birim_net") or g.get("adet"))
     sonuc = {"paylasilan": p}
+    # Sayfada "Sepette %10 / Sepette 1.299 TL" etiketi varsa ödenecek tutar listedekinden düşüktür
+    sepet_t = sepet_fiyati_tahmini(sayfa, (sonuc_kamp or {}).get("kampanyalar"))
+    sonuc["sepet_tahmini"] = sepet_t
+    if sepet_t:
+        sonuc["sepet_metin"] = (f"Sayfada sepet indirimi etiketi var: liste {fiyat_yaz(sayfa)}, sepette yaklaşık {fiyat_yaz(sepet_t)}. "
+                                f"Kesin tutar sepete ekleyince görünür.")
+    if g.get("kanal") == TAKIBIM:
+        # Kullanıcının kendi eklediği ürün: "paylaşılan fiyat" yok, önceki okumayla ve eklendiği günkü fiyatla kıyasla
+        ilk = g.get("ilk_fiyat") or p
+        if ilk:
+            fark = (sayfa - ilk) / ilk * 100
+            sonuc["fark"] = round(fark, 1)
+            if fark <= -3:
+                sonuc["karar"], sonuc["renk"] = ("gecerli", "yesil")
+                sonuc["metin"] = f"Eklediğinizde {fiyat_yaz(ilk)} idi, şimdi %{int(round(-fark))} daha ucuz."
+            elif fark >= 3:
+                sonuc["karar"], sonuc["renk"] = ("sepette", "sari")
+                sonuc["metin"] = f"Eklediğinizde {fiyat_yaz(ilk)} idi, şimdi %{int(round(fark))} daha pahalı."
+            else:
+                sonuc["karar"], sonuc["renk"] = ("gecerli", "gri")
+                sonuc["metin"] = f"Eklediğinizden beri ({fiyat_yaz(ilk)}) fiyat değişmedi."
+        p = None
     if p:
         fark = (sayfa - p) / p * 100
         sonuc["fark"] = round(fark, 1)
@@ -1198,6 +1345,11 @@ def canli_karar(g, sayfa, gk, sonuc_kamp=None):
         else:
             sonuc["karar"], sonuc["renk"] = ("bitti", "kirmizi")
             sonuc["metin"] = f"Fiyat yükselmiş: paylaşımda {fiyat_yaz(p)}, şimdi {fiyat_yaz(sayfa)} (%{int(round(fark))} daha pahalı). Fırsat bitmiş görünüyor."
+        # Liste fiyatı paylaşılandan yüksek ama sayfadaki sepet indirimiyle paylaşılan fiyata iniyorsa fırsat sürüyor
+        if sepet_t and sonuc.get("karar") in ("bitti", "sepette", "sepet_yok") and sepet_t <= p * 1.03:
+            sonuc["karar"], sonuc["renk"] = ("kampanya", "yesil")
+            sonuc["metin"] = (f"Sayfada {fiyat_yaz(sayfa)} görünüyor ama sepet indirimi etiketiyle sepette yaklaşık {fiyat_yaz(sepet_t)} — "
+                              f"paylaşılan {fiyat_yaz(p)} hâlâ geçerli görünüyor; ödemeden önce sepet tutarını doğrulayın.")
     if gk:
         oz = gk["ozet"]
         sonuc["kayit"] = {"en_dusuk": oz["en_dusuk"], "ortalama": oz["ortalama"], "adet": oz["adet"], "ilk_ts": oz["ilk_ts"]}
@@ -1207,6 +1359,14 @@ def canli_karar(g, sayfa, gk, sonuc_kamp=None):
             sonuc["gercek"] = f"Mağaza fiyatı kayıtlı ortalamanın %{int(round((oz['ortalama'] - sayfa) / oz['ortalama'] * 100))} altında."
         else:
             sonuc["gercek"] = f"Mağaza fiyatı kayıtlı ortalamanın altında değil ({fiyat_yaz(oz['ortalama'])}); acele etmeyin."
+        # 30 gün ölçütü: yönetmeliğe göre "indirim" son 30 günün en düşük fiyatına göre anlamlıdır
+        og = gk.get("otuz_gun")
+        if og:
+            if sayfa <= og["en_dusuk"] * 1.005:
+                sonuc["otuz_gun"] = f"✔ Son 30 günde görülen en düşük fiyat ({og['adet']} kayıt) — indirim gerçek."
+            else:
+                sonuc["otuz_gun"] = (f"Son 30 günde {fiyat_yaz(og['en_dusuk'])} görüldü; mağazadaki fiyat bunun "
+                                     f"%{int(round((sayfa - og['en_dusuk']) / og['en_dusuk'] * 100))} üstünde.")
     return sonuc
 
 
@@ -1395,6 +1555,8 @@ class Depo:
         finally:
             with self.kilit:
                 self.yenileniyor = False
+        yeni_idler += self._takipleri_ara()
+        self._takibimi_guncelle()
         self._bildir(set(yeni_idler), ilk_calisma)
         self._kacirilmazlari_dogrula()
         if self.ayarlar.get("gecmis_tamamla", True):
@@ -1613,9 +1775,10 @@ class Depo:
             ar = dict(sorted(ar.items(), key=lambda kv: kv[1][0], reverse=True)[:ARAMA_ARSIV_EN_FAZLA])
         self.veri["arama_arsivi"] = ar
         sinir = int((simdi() - timedelta(days=self.ayarlar["saklama_gun"])).timestamp())
-        g = {k: v for k, v in self.veri["gonderiler"].items() if v.get("ts", 0) >= sinir}
+        # Kullanıcının kendi eklediği ürünler silinene kadar kalır
+        g = {k: v for k, v in self.veri["gonderiler"].items() if v.get("ts", 0) >= sinir or v.get("kanal") == TAKIBIM}
         if len(g) > EN_FAZLA_GONDERI:
-            g = dict(sorted(g.items(), key=lambda kv: kv[1].get("ts", 0), reverse=True)[:EN_FAZLA_GONDERI])
+            g = dict(sorted(g.items(), key=lambda kv: (kv[1].get("kanal") == TAKIBIM, kv[1].get("ts", 0)), reverse=True)[:EN_FAZLA_GONDERI])
         self.veri["gonderiler"] = g
         gsinir = int((simdi() - timedelta(days=ARSIV_GUN)).timestamp())
         yeni = {}
@@ -1704,6 +1867,13 @@ class Depo:
         f = g["fiyat"]
         tum = sorted((k[0], k[1]) for k in self.veri["gecmis"].get(g["anahtar"], [])
                      if k[2] != g["id"] and g["ts"] - ARSIV_GUN * 86400 <= k[0] < g["ts"] - 1800)
+        # Mağaza sayfasından doğrudan okunan fiyatlar da kayda girer (kanal paylaşımı olmadan görülen fiyatlar)
+        magaza_kayit = sorted((int(k[0]), float(k[1])) for k in self.veri.get("canli", {}).get(g["anahtar"], [])
+                              if g["ts"] - ARSIV_GUN * 86400 <= k[0] and k[1])
+        # Son 30 gün (Fiyat Etiketi Yönetmeliği ölçütü): paylaşımdan önceki 30 günde görülen en düşük fiyat
+        otuz = [p for t, p in tum + magaza_kayit if g["ts"] - 30 * 86400 <= t < g["ts"]]
+        otuz_gun = {"en_dusuk": min(otuz), "adet": len(otuz)} if otuz else None
+        tum = sorted(set(tum + [x for x in magaza_kayit if x[0] < g["ts"] - 1800]))
         if not tum:
             return None
         fiyatlar = [p for _, p in tum]
@@ -1718,8 +1888,15 @@ class Depo:
             "dusus_son": round((son[1] - f) / son[1] * 100, 1),
             "dusus_ort": round((ort - f) / ort * 100, 1),
             "en_dusuge_gore": round((f - en_d[1]) / en_d[1] * 100, 1),
-        }}
+            "magaza_adet": len(magaza_kayit),
+        }, "otuz_gun": otuz_gun}
         onceki = [x for x in tum if x[0] >= g["ts"] - GECMIS_GUN * 86400]
+        # Paylaşımdaki "eski fiyat" (üstü çizili) son 60 günde hiç görülmediyse şişirilmiş liste fiyatı olabilir
+        if g.get("eski_fiyat") and len(onceki) >= 2:
+            en_yuksek_gorulen = max(p for _, p in onceki)
+            if g["eski_fiyat"] > en_yuksek_gorulen * 1.15:
+                sonuc["eski_fiyat_supheli"] = {"eski": g["eski_fiyat"], "gorulen": en_yuksek_gorulen,
+                                               "gercek_yuzde": round((en_yuksek_gorulen - f) / en_yuksek_gorulen * 100, 1)}
         if not onceki:
             return sonuc
         sonuc["en_dusuk_onceki"] = min(p for _, p in onceki)
@@ -1735,26 +1912,38 @@ class Depo:
         kanallar = {k.lower() for k in self.ayarlar["kanallar"]}
         liste = []
         for g in self.veri["gonderiler"].values():
-            if g["kanal"].lower() not in kanallar:
+            if g["kanal"].lower() not in kanallar and g["kanal"] != TAKIBIM:
                 continue
             d = {k: v for k, v in g.items() if k not in ("anahtar_eski",)}
-            d["link"] = f"https://t.me/{g['id']}"
+            d["link"] = g.get("urun_link") if g["kanal"] == TAKIBIM else f"https://t.me/{g['id']}"
             d["magaza_ad"] = MAGAZA_AD.get(g["magaza"], "Diğer")
             d["rozetler"] = list(g.get("rozetler") or [])
             adaylar = []
             if g.get("yuzde"):
                 adaylar.append((g["yuzde"], "Paylaşımda yazıyor"))
+            gk = self._gecmis_karsilastir(g)
             if g.get("fiyat") and g.get("eski_fiyat"):
-                adaylar.append(((g["eski_fiyat"] - g["fiyat"]) / g["eski_fiyat"] * 100, "Eski fiyata göre"))
+                if gk and gk.get("eski_fiyat_supheli"):
+                    # Üstü çizili fiyat kayıtlarda hiç görülmedi: oranı gerçekten görülen en yüksek fiyata göre hesapla
+                    adaylar.append((gk["eski_fiyat_supheli"]["gercek_yuzde"], "Gerçekten görülen en yüksek fiyata göre"))
+                else:
+                    adaylar.append(((g["eski_fiyat"] - g["fiyat"]) / g["eski_fiyat"] * 100, "Eski fiyata göre"))
             if g.get("xaly_yuzde"):
                 adaylar.append((g["xaly_yuzde"], g["xaly"] + (" (paylaşılan fiyata dahil)" if g.get("sayfa_tahmini") else "")))
             if g.get("tur") == "kupon" and g.get("kupon_tutar") and g.get("kupon_limit"):
                 adaylar.append((g["kupon_tutar"] / g["kupon_limit"] * 100,
                                 f"Kupon: {fiyat_yaz(g['kupon_tutar'])} / {fiyat_yaz(g['kupon_limit'])} alışveriş"))
-            gk = self._gecmis_karsilastir(g)
             d["onceki"] = None
             d["fiyat_gecmisi"] = gk["liste"] if gk else []
             d["fiyat_ozet"] = gk["ozet"] if gk else None
+            d["otuz_gun"] = gk.get("otuz_gun") if gk else None
+            d["eski_fiyat_supheli"] = gk.get("eski_fiyat_supheli") if gk else None
+            # Ani %70+ düşüş: çoğu zaman yanlış okunan fiyat ya da farklı varyant → mağazada doğrulanana kadar "kontrol et"
+            d["kontrol_et"] = None
+            if g.get("tur") == "urun" and g.get("fiyat") and d["otuz_gun"] and d["otuz_gun"]["adet"] >= 2 \
+                    and g["fiyat"] < d["otuz_gun"]["en_dusuk"] * 0.3:
+                d["kontrol_et"] = (f"Fiyat son 30 günün en düşüğünden (%{int(round((1 - g['fiyat'] / d['otuz_gun']['en_dusuk']) * 100))}) "
+                                   f"çok aşağıda; yanlış okunmuş ya da farklı varyant olabilir, mağazada doğrulayın.")
             d["arsiv_arandi"] = bool(g.get("anahtar") and g["anahtar"] in self.veri["arsiv_arama"])
             d["akakce"] = ("https://www.akakce.com/arama/?q=" + urllib.parse.quote(arama_sorgusu(g["baslik"]))) if g.get("fiyat") else None
             cs = self.veri["canli_son"].get(g["id"])
@@ -1766,11 +1955,19 @@ class Depo:
             d["dusus_etiketi"] = None
             if gk and g.get("fiyat"):
                 oz = gk["ozet"]
+                og = gk.get("otuz_gun")
                 gun = max(1, round((g["ts"] - oz["ilk_ts"]) / 86400))
                 if oz["adet"] >= 2 and gun >= 7 and g["fiyat"] <= oz["en_dusuk"] * 1.001:
                     d["dusus_etiketi"] = f"Son {gun} günün en düşüğü"
+                elif og and og["adet"] >= 2 and g["fiyat"] <= og["en_dusuk"] * 1.001 and not d["kontrol_et"]:
+                    d["dusus_etiketi"] = "Son 30 günün en düşüğü"
                 elif oz["adet"] >= 2 and oz["dusus_ort"] >= 5:
                     d["dusus_etiketi"] = f"Ortalamanın %{int(round(oz['dusus_ort']))} altında"
+            # Kanal, 30 günün en düşüğünden pahalı bir fiyatı "indirim" diye paylaşmış olabilir
+            d["otuz_gun_ustunde"] = None
+            if g.get("tur") == "urun" and g.get("fiyat") and d["otuz_gun"] and d["otuz_gun"]["adet"] >= 2 \
+                    and g["fiyat"] > d["otuz_gun"]["en_dusuk"] * 1.05 and not d["kontrol_et"]:
+                d["otuz_gun_ustunde"] = d["otuz_gun"]["en_dusuk"]
             # Paylaşım "indirimli" diyor ama program bu ürünü yakın zamanda aynı ya da daha ucuz fiyata gördüyse uyar
             d["daha_once_ucuz"] = bool(gk and g.get("fiyat") and gk.get("en_dusuk_onceki") is not None
                                        and gk["en_dusuk_onceki"] <= g["fiyat"] * 1.005)
@@ -1823,7 +2020,8 @@ class Depo:
                     esi["uygulama"] = esi.get("uygulama") or d.get("uygulama")
                     esi["ilk_siparis"] = esi.get("ilk_siparis") or d.get("ilk_siparis")
                 continue
-            if d["tur"] != "urun" or not d.get("anahtar"):
+            if d["tur"] != "urun" or not d.get("anahtar") or d["kanal"] == TAKIBIM:
+                # Kullanıcının kendi eklediği ürün kanal paylaşımıyla birleştirilmez; "Takibim"de hep kendi kartı kalır
                 sonuc.append(d)
                 continue
             esi = gruplar.get(d["anahtar"])
@@ -1847,21 +2045,36 @@ class Depo:
             if not esi.get("resim"):
                 esi["resim"] = d.get("resim")
         # Mağazalara göre fiyatlar: aynı model kodu farklı mağazalarda paylaşıldıysa (son 30 gün)
+        # Eşleştirme anahtarı: mağaza sayfasından okunan barkod (kesin) ya da başlıktaki model kodu
         sinir = time.time() - 14 * 86400
         kova = {}
+
+        def es_anahtarlar(d):
+            return [k for k in (("g:" + d["gtin"]) if d.get("gtin") else None, ("m:" + d["model"]) if d.get("model") else None) if k]
         for d in liste:
-            if d.get("model") and d["tur"] == "urun" and d.get("fiyat") and not d.get("bitti") and d["ts"] >= sinir \
+            if d["tur"] == "urun" and d.get("fiyat") and not d.get("bitti") and d["ts"] >= sinir \
                     and "ikinci_el" not in d["rozetler"]:
-                kova.setdefault(d["model"], []).append(d)
+                for k in es_anahtarlar(d):
+                    kova.setdefault(k, []).append(d)
         for d in sonuc:
             d["urun_gibi"] = d["tur"] in ("kupon", "kampanya") and urun_gibi(d)
             d["teyit"] = kanal_teyidi(d) if d["tur"] == "urun" and d.get("fiyat") else None
             d["oto_okunamaz"] = d["tur"] == "urun" and d.get("magaza") in OTO_OKUNAMAZ
             d["kacirilmaz"] = kacirilmaz_bilgisi(d)
             d["magazalar"] = []
-            if d.get("model") and len(kova.get(d["model"], [])) >= 2:
+            esler, gorulen = [], set()
+            for k in es_anahtarlar(d):
+                for x in kova.get(k, []):
+                    if x["id"] not in gorulen:
+                        # Barkodu bilinen iki ürünün barkodu farklıysa model kodu uysa da aynı ürün değildir
+                        if d.get("gtin") and x.get("gtin") and x["gtin"] != d["gtin"]:
+                            continue
+                        gorulen.add(x["id"])
+                        esler.append(x)
+            if len(esler) >= 2:
+                esler.sort(key=lambda x: x["ts"], reverse=True)
                 en_yeni = {}
-                for x in kova[d["model"]]:      # liste en yeniden eskiye sıralı
+                for x in esler:      # en yeniden eskiye
                     en_yeni.setdefault(x["magaza"], x)
                 if len(en_yeni) >= 2:
                     d["magazalar"] = sorted(({"magaza": x["magaza"], "magaza_ad": x["magaza_ad"], "fiyat": x["fiyat"],
@@ -1907,6 +2120,30 @@ class Depo:
                 self.veri["gonderiler"].setdefault(g["id"], g)
             self._gecmisi_guncelle()
         return [g["id"] for g in bulunan]
+
+    def _takipleri_ara(self, adet=TAKIP_ARAMA_ADET):
+        """Takip edilen kelimeleri her yenilemede sırayla kanalların arama sayfasında arar; böylece kanalın
+        ana akışında geride kalmış ya da okunmayan sayfalardaki ürünler de listeye girer. Yeni id'leri döndürür."""
+        with self.kilit:
+            takip = list(self.ayarlar.get("takip") or [])
+            if not takip:
+                return []
+            bas = self.veri.get("takip_sira", 0) % len(takip)
+            secilen = [takip[(bas + i) % len(takip)] for i in range(min(adet, len(takip)))]
+            self.veri["takip_sira"] = (bas + len(secilen)) % len(takip)
+            mevcut = set(self.veri["gonderiler"])
+            sinir = int((simdi() - timedelta(days=self.ayarlar["saklama_gun"])).timestamp())
+        yeni = []
+        for q in secilen:
+            try:
+                idler = self.ara(q)
+            except Exception:
+                continue
+            with self.kilit:
+                yeni += [i for i in idler if i not in mevcut and (self.veri["gonderiler"].get(i) or {}).get("ts", 0) >= sinir]
+                mevcut.update(idler)
+            time.sleep(1.5)
+        return yeni
 
     def durum(self):
         with self.kilit:
@@ -1961,11 +2198,92 @@ class Depo:
             s_.update(canli_karar(g, s_["fiyat"], gk, s_))
             with self.kilit:
                 kayit = self.veri.setdefault("canli", {}).setdefault(g.get("anahtar") or g["id"], [])
-                kayit.append([s_["ts"], s_["fiyat"]])
-                del kayit[:-50]
+                # Aynı fiyatı 1 saat içinde tekrar yazma; kayıt mağaza fiyat geçmişidir
+                if not kayit or kayit[-1][1] != s_["fiyat"] or s_["ts"] - kayit[-1][0] > 3600:
+                    kayit.append([s_["ts"], s_["fiyat"]])
+                del kayit[:-200]
+                # Mağaza sayfasında barkod okunduysa paylaşıma yaz: farklı mağazalardaki aynı ürün böyle eşleşir
+                gg_ = self.veri["gonderiler"].get(g["id"])
+                if gg_ is not None and s_.get("gtin") and not gg_.get("gtin"):
+                    gg_["gtin"] = s_["gtin"]
+                if g.get("kanal") == TAKIBIM:
+                    # Kendi eklenen ürün: kart fiyatı her zaman mağazadaki son fiyattır
+                    gg = self.veri["gonderiler"].get(g["id"])
+                    if gg:
+                        gg["fiyat"], gg["ts"], gg["tarih"] = s_["fiyat"], s_["ts"], simdi().isoformat()
+                        gg["bitti"] = bool(s_.get("stok_yok"))
+                        if not gg.get("resim") and s_.get("resim"):
+                            gg["resim"] = s_["resim"]
+                        if gg.get("baslik", "").startswith("(") and s_.get("baslik"):
+                            gg["baslik"] = s_["baslik"]
+                        self._gecmisi_guncelle()
         with self.kilit:
             self.veri["canli_son"][g["id"]] = s_
         return s_
+
+    # --- kullanıcının kendi eklediği ürünler ("Takibim") ---------------------
+    def urun_ekle(self, url):
+        """Mağaza bağlantısını alır, sayfadan fiyat/başlık okur ve ürünü 'takibim' kanalına kart olarak ekler.
+        Bundan sonra her yenilemede fiyatı mağazadan okunur; alarm kurulabilir."""
+        url = (url or "").strip()
+        m = re.search(r"https?://\S+", url)
+        url = m.group(0).rstrip(".,)") if m else ""
+        if not url or not guvenli_dis_adres(url):
+            raise ValueError("Geçerli bir mağaza bağlantısı yapıştırın (https:// ile başlamalı)")
+        with self.kilit:
+            for g in self.veri["gonderiler"].values():
+                if g.get("kanal") == TAKIBIM and g.get("urun_link") == url:
+                    return {"ok": True, "id": g["id"], "zaten": True}
+            if sum(1 for g in self.veri["gonderiler"].values() if g.get("kanal") == TAKIBIM) >= 60:
+                raise ValueError("En fazla 60 ürün ekleyebilirsiniz; Takibim sekmesinden silerek yer açın")
+        s_ = canli_fiyat_getir(url)
+        s_["ts"], s_["surum"] = int(time.time()), SURUM
+        baslik = s_.get("baslik") or "(başlık okunamadı)"
+        fiyat = s_.get("fiyat") if s_["durum"] == "ok" else None
+        metin = baslik + (f"\n{fiyat_yaz(fiyat)}" if fiyat else "")
+        with self.kilit:
+            no = max([g["no"] for g in self.veri["gonderiler"].values() if g.get("kanal") == TAKIBIM] or [0]) + 1
+            g = gonderi_olustur(TAKIBIM, no, metin, [url], s_.get("resim"), simdi(), None)
+            g.update(fiyat=fiyat, eski_fiyat=None, yuzde=None, kodlar=[], rozetler=[], sepet_fiyati=False, bitti=False,
+                     tur="urun" if fiyat else "kampanya", ilk_fiyat=fiyat, baslik=baslik, gtin=s_.get("gtin"),
+                     magaza=magaza_bul([s_.get("son_url") or url], ""),
+                     anahtar=urun_anahtari(s_.get("son_url") or url, magaza_bul([s_.get("son_url") or url], ""), baslik, False),
+                     kategori=kategori_bul(baslik))
+            self.veri["gonderiler"][g["id"]] = g
+            if fiyat:
+                s_.update(canli_karar(g, fiyat, None, s_))
+                kayit = self.veri.setdefault("canli", {}).setdefault(g["anahtar"] or g["id"], [])
+                kayit.append([s_["ts"], fiyat])
+                self.veri["canli_son"][g["id"]] = s_
+                self._gecmisi_guncelle()
+            try:
+                json_yaz(VERI_DOSYASI, self.veri)
+            except OSError:
+                pass
+        return {"ok": True, "id": g["id"], "fiyat": fiyat, "baslik": baslik, "durum": s_["durum"], "mesaj": s_.get("mesaj")}
+
+    def urun_sil(self, gid):
+        with self.kilit:
+            g = self.veri["gonderiler"].get(gid)
+            if not g or g.get("kanal") != TAKIBIM:
+                raise ValueError("Ürün bulunamadı")
+            del self.veri["gonderiler"][gid]
+            self.veri["canli_son"].pop(gid, None)
+            try:
+                json_yaz(VERI_DOSYASI, self.veri)
+            except OSError:
+                pass
+        return True
+
+    def _takibimi_guncelle(self, en_fazla=30):
+        """Kullanıcının eklediği ürünlerin fiyatını her yenilemede mağazadan okur (ürün başına 30 dk önbellek)."""
+        with self.kilit:
+            idler = [g["id"] for g in self.veri["gonderiler"].values() if g.get("kanal") == TAKIBIM and g.get("urun_link")]
+        for gid in idler[:en_fazla]:
+            try:
+                self.canli_kontrol(gid)
+            except Exception:
+                pass
 
     def alarm_islem(self, veri):
         islem = veri.get("islem")
@@ -2025,7 +2343,7 @@ class Depo:
                         kl.append(k)
                 if not kl:
                     raise ValueError("En az bir kanal gerekli")
-                a["kanallar"] = kl[:15]
+                a["kanallar"] = kl[:EN_FAZLA_KANAL]
             for alan, (en_az, en_cok) in AYAR_SINIRLARI.items():
                 if alan in yeni:
                     try:
@@ -2127,6 +2445,14 @@ main{max-width:420px;margin:0 auto}h1{font-size:20px}@media (prefers-color-schem
 <body><main><h1>Bu sayfa için erişim anahtarı gerekiyor</h1>
 <p>Bilgisayardaki Kasım Fırsatları sayfasında <b>Ayarlar → Telefonda aç</b> bölümündeki QR kodu okutun ya da oradaki bağlantıyı açın.</p></main></body></html>"""
 
+EKLE_HTML = """<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ürün eklendi — Kasım Fırsatları</title><meta http-equiv="refresh" content="4;url=/?sekme=takip">
+<style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:40px 20px;background:#f6f3ef;color:#1c1917}
+main{max-width:420px;margin:0 auto}h1{font-size:20px}.ok{color:#15803d}.hata{color:#b91c1c}a{color:inherit}
+@media (prefers-color-scheme:dark){body{background:#13100e;color:#f4efe9}}</style></head>
+<body><main><h1 class="{{SINIF}}">{{MESAJ}}</h1>
+<p>Birkaç saniye içinde <a href="/?sekme=takip">Takibim</a> sekmesi açılacak.</p></main></body></html>"""
+
 
 class Isleyici(BaseHTTPRequestHandler):
     depo = None
@@ -2200,6 +2526,26 @@ class Isleyici(BaseHTTPRequestHandler):
             return self._json(403, {"hata": "izin yok"})
         if yol in ("/", "/index.html"):
             self._gonder(200, ARAYUZ_HTML, "text/html; charset=utf-8")
+        elif yol == "/ekle":
+            # Telefondan hızlı ekleme: "Paylaş" ile gelen mağaza linki (?url=...) eklenir, sonra Takibim sekmesi açılır.
+            # (Android'de HTTP Shortcuts gibi bir uygulamayla paylaşım menüsüne bağlanabilir; KURULUM.txt'ye bakın.)
+            u = urllib.parse.parse_qs(parca.query).get("url", [""])[0]
+            m = re.search(r"https?://\S+", u)
+            if not m:
+                return self._gonder(400, EKLE_HTML.replace("{{MESAJ}}", "Bağlantı bulunamadı; mağaza linkini /ekle?url=… biçiminde verin.")
+                                    .replace("{{SINIF}}", "hata"), "text/html; charset=utf-8")
+            try:
+                r = self.depo.urun_ekle(m.group(0))
+                if r.get("zaten"):
+                    mesaj = "Bu ürün zaten takip listenizde."
+                elif r.get("fiyat"):
+                    mesaj = f"Eklendi: {html.escape((r.get('baslik') or '')[:70])} — {fiyat_yaz(r['fiyat'])}"
+                else:
+                    mesaj = "Eklendi ama fiyat okunamadı: " + html.escape(r.get("mesaj") or "mağaza sayfası okunamadı")
+                sinif = "ok"
+            except ValueError as e:
+                mesaj, sinif = html.escape(str(e)), "hata"
+            self._gonder(200, EKLE_HTML.replace("{{MESAJ}}", mesaj).replace("{{SINIF}}", sinif), "text/html; charset=utf-8")
         elif yol == "/api/durum":
             d = self.depo.durum()
             d["ag"] = {"acik": self.ag_modu, "adres": self.ag_adresi if self._yerel_istek() else None,
@@ -2231,6 +2577,14 @@ class Isleyici(BaseHTTPRequestHandler):
                 return self._json(200, self.depo.gecmisi_getir(str(veri.get("id", ""))))
             except ValueError:
                 return self._json(400, {"hata": "Geçersiz istek"})
+        if yol == "/api/ekle":
+            try:
+                veri = json.loads(govde or b"{}")
+                if veri.get("islem") == "sil":
+                    return self._json(200, {"ok": self.depo.urun_sil(str(veri.get("id", "")))})
+                return self._json(200, self.depo.urun_ekle(str(veri.get("url", ""))))
+            except ValueError as e:
+                return self._json(400, {"hata": str(e) or "Geçersiz istek"})
         if yol == "/api/canli":
             try:
                 veri = json.loads(govde or b"{}")
@@ -2655,6 +3009,7 @@ b.dus{color:var(--yesil)} b.art{color:var(--kirmizi)}
 .fdurum{margin-top:6px;font-size:12.5px;font-weight:700;border-radius:8px;padding:5px 8px}
 .fdurum.c-yesil{background:var(--yesil-y);color:var(--yesil)}.fdurum.c-sari{background:var(--sari-y);color:var(--sari)}.fdurum.c-kirmizi{background:var(--kirmizi-y);color:var(--kirmizi)}
 .canli{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.kart-alt{margin-top:8px;display:flex;justify-content:flex-end}
 .canli.c-yesil,.canli.c-sari,.canli.c-kirmizi,.canli.c-gri{display:block;border-radius:12px;padding:10px 12px;border:1px solid var(--cizgi)}
 .canli.c-yesil{background:var(--yesil-y);border-color:transparent}.canli.c-sari{background:var(--sari-y);border-color:transparent}
 .canli.c-kirmizi{background:var(--kirmizi-y);border-color:transparent}
@@ -2776,6 +3131,11 @@ try {
   const k = JSON.parse(localStorage.getItem("kf-filtre") || "null"); if (k) { const sure = Object.assign({}, S.f.sure, k.sureSurum === 2 ? (k.sure || {}) : {}); k.sureSurum = 2; Object.assign(S.f, k); S.f.sure = sure; if (!["hepsi", "kod", "kampanya"].includes(S.f.kuponTur)) S.f.kuponTur = "hepsi"; }
   const s = localStorage.getItem("kf-sekme"); if (s && SEKMELER.some(x => x[0] === s)) S.sekme = s;
 } catch (e) {}
+try {
+  // /ekle sayfasından ya da bir bağlantıdan belirli sekmeyle açılma: /?sekme=takip
+  const qs = new URLSearchParams(location.search).get("sekme");
+  if (qs && SEKMELER.some(x => x[0] === qs)) { S.sekme = qs; history.replaceState(null, "", location.pathname); }
+} catch (e) {}
 function sakla(){ try { localStorage.setItem("kf-filtre", JSON.stringify(S.f)); localStorage.setItem("kf-sekme", S.sekme); } catch (e) {} }
 
 function toast(m){ const t = $("#toast"); t.textContent = m; t.classList.add("goster"); clearTimeout(t._z); t._z = setTimeout(() => t.classList.remove("goster"), 1800); }
@@ -2788,7 +3148,8 @@ function once(ts){
   return Math.round(s/86400) + " gün önce";
 }
 function saat(iso){ if (!iso) return "—"; const d = new Date(iso); return d.toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit"}); }
-function kanalAd(k){ const x = (S.veri?.kaynaklar || []).find(z => z.kanal.toLowerCase() === String(k).toLowerCase()); return x ? x.ad : k; }
+const TAKIBIM = "takibim";
+function kanalAd(k){ if (k === TAKIBIM) return "Kendi eklediğim"; const x = (S.veri?.kaynaklar || []).find(z => z.kanal.toLowerCase() === String(k).toLowerCase()); return x ? x.ad : k; }
 
 async function yukle(){
   try {
@@ -3038,6 +3399,10 @@ function kart(x){
   if (x.dusus_etiketi) rozet.push(`<span class="rozet r-dusus">📉 ${esc(x.dusus_etiketi)}</span>`);
   if ((x.magazalar || []).length >= 2) rozet.push(`<span class="rozet r-mavi">${x.magazalar.length} mağazada · en ucuz ${esc(x.magazalar[0].magaza_ad)}</span>`);
   if (x.daha_once_ucuz) rozet.push(`<span class="rozet r-kirmizi">Daha önce bu fiyata ya da daha ucuza görüldü</span>`);
+  if (x.kontrol_et) rozet.push(`<span class="rozet r-kirmizi" title="${esc(x.kontrol_et)}">🧐 Kontrol et: fiyat şüpheli derecede düşük</span>`);
+  else if (x.otuz_gun_ustunde) rozet.push(`<span class="rozet r-sari">Son 30 günde ${tl(x.otuz_gun_ustunde)} görüldü, bu daha pahalı</span>`);
+  if (x.eski_fiyat_supheli) rozet.push(`<span class="rozet r-sari" title="Üstü çizili ${tl(x.eski_fiyat_supheli.eski)} son 60 günde hiç görülmedi; en yüksek görülen ${tl(x.eski_fiyat_supheli.gorulen)}">⚠️ Eski fiyat şişirilmiş görünüyor · gerçek indirim ~%${Math.round(x.eski_fiyat_supheli.gercek_yuzde)}</span>`);
+  if (x.kanal === TAKIBIM) rozet.push(`<span class="rozet r-mavi">📌 Kendi eklediğim ürün</span>`);
   x.rozetler.filter(r => ROZET[r] && r !== "kupon" && !(r === "sepette" && fiyatNot)).forEach(r => rozet.push(`<span class="rozet ${ROZET[r][1]}">${ROZET[r][0]}</span>`));
   if (x.xaly && !String(x.indirim_kaynak || "").startsWith(x.xaly)) rozet.push(`<span class="rozet r-mavi">${esc(x.xaly)}</span>`);
   if (yas > 3 * 24 * SAAT) rozet.push(`<span class="rozet r-kirmizi">⚠️ ${tarihKisa(x.ts)} tarihli fiyat · bugün geçerli olmayabilir</span>`);
@@ -3146,11 +3511,15 @@ function canliBlok(x){
   if (c.durum !== "ok") return `<div class="canli c-sari"><b>Anlık fiyat alınamadı.</b> ${esc(c.mesaj || "")} <a href="${esc(link(x.urun_link))}" target="_blank" rel="noopener noreferrer">Mağazada aç</a>
       <button type="button" class="cip" data-canli="${esc(x.id)}" data-yeniden="1" style="flex:none">Tekrar dene</button></div>`;
   const ikon = {yesil: "✅", sari: "⚠️", kirmizi: "❌"}[c.renk] || "ℹ️";
+  const yasDk = c.ts ? Math.round((Date.now() / 1000 - c.ts) / 60) : 0;
+  const bayat = yasDk >= 90 ? ` · <b>${yasDk >= 120 ? Math.round(yasDk / 60) + " saat" : yasDk + " dk"} önce okundu, değişmiş olabilir</b>` : "";
   return `<div class="canli c-${c.renk || "gri"}">
-      <div class="c-ust"><span>Mağazada şu an</span><b>${tl(c.fiyat)}</b></div>
-      <div class="c-alt">${zaman} itibarıyla · ${esc(c.yontem || "")}${c.stok_yok ? " · <b>stokta yok görünüyor</b>" : ""}</div>
+      <div class="c-ust"><span>Mağazada ${yasDk >= 90 ? "son okunan" : "şu an"}</span><b>${tl(c.fiyat)}</b></div>
+      <div class="c-alt">${zaman} itibarıyla · ${esc(c.yontem || "")}${c.stok_yok ? " · <b>stokta yok görünüyor</b>" : ""}${bayat}</div>
       ${c.metin ? `<div class="c-karar">${ikon} ${esc(c.metin)}</div>` : ""}
       ${c.gercek ? `<div class="c-karar">📊 ${esc(c.gercek)}</div>` : ""}
+      ${c.otuz_gun ? `<div class="c-karar">📅 ${esc(c.otuz_gun)}</div>` : ""}
+      ${c.sepet_metin ? `<div class="c-karar">🛒 ${esc(c.sepet_metin)}</div>` : ""}
       <div class="c-alt">Ödemeden önce sepetteki son tutarı kontrol edin; beden/renk seçimi fiyatı değiştirebilir. <button type="button" class="cip" data-canli="${esc(x.id)}" data-yeniden="1" style="flex:none;padding:3px 9px">Yenile</button></div>
     </div>`;
 }
@@ -3267,7 +3636,13 @@ function takipCiz(){
       ${enUcuz && link(enUcuz.urun_link) ? `<a class="cip" style="flex:none;text-decoration:none" href="${esc(link(enUcuz.urun_link))}" target="_blank" rel="noopener noreferrer">Git</a>` : ""}
       <button type="button" data-alarmsil="${esc(a.id)}">Kaldır</button></div>`;
   };
+  const benim = v.firsatlar.filter(x => x.kanal === TAKIBIM).sort((a, b) => b.ts - a.ts);
+  const statik = !!v.statik;
   $("#icerik").innerHTML = `
+    <h2 class="bolum">Kendi eklediğim ürünler <span class="say">${benim.length}</span></h2>
+    ${statik ? `<div class="ipucu">Ürün ekleme yalnızca bilgisayarda çalışan programda yapılır (sitede değil).</div>` : `<div class="filtre"><div class="satir"><input type="url" id="urunLink" placeholder="Mağaza ürün linkini yapıştır (Trendyol, Hepsiburada, Amazon, n11…)" autocomplete="off" inputmode="url"><button type="button" class="cip" id="urunEkle" style="flex:none">Ekle</button></div>
+      <div class="ipucu">Program sayfadan fiyatı okur, her yenilemede yeniden kontrol eder; karttan 🎯 hedef fiyat alarmı kurabilirsin. Telefonda: mağaza uygulamasında “Paylaş → Bağlantıyı kopyala”, sonra buraya yapıştır.</div></div>`}
+    ${benim.length ? benim.map(x => kartSec(x).replace("</article>", `<div class="kart-alt"><button type="button" class="cip" data-urunsil="${esc(x.id)}">Takipten çıkar</button></div></article>`)).join("") : ""}
     <h2 class="bolum">Hedef fiyat alarmları <span class="say">${alarmlar.length}</span></h2>
     ${alarmlar.length ? alarmlar.map(alarmSatir).join("") + `<div class="ipucu" style="margin-top:6px">${v.bildirim_var ? "Hedefe inen yeni paylaşımda telefona bildirim gelir." : "Telefona bildirim almak için Ayarlar → Telefona bildirim."}</div>` : `<div class="bos-durum">Bir ürün kartındaki “🎯 Hedef fiyat”a dokunup istediğin fiyatı yaz; ürün o fiyata inince haber verelim.</div>`}
     <div class="filtre" style="margin-top:14px">
@@ -3511,7 +3886,7 @@ function ciz(){ cizGovde(); detayCiz(); canliGozle(); }
 function cizGovde(){
   ust(); navCiz();
   if (S.sekme === "takvim") takvimCiz();
-  else if (S.sekme === "takip") { if (document.activeElement && document.activeElement.id === "takipKelime") return; takipCiz(); }
+  else if (S.sekme === "takip") { if (document.activeElement && ["takipKelime", "urunLink"].includes(document.activeElement.id)) return; takipCiz(); }
   else if (S.sekme === "ayar") { if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".ayar")) return; ayarCiz(); qrCiz(); }
   else {
     if (document.activeElement && document.activeElement.id && document.activeElement.id.startsWith("hedefTL-")) return;
@@ -3548,6 +3923,27 @@ document.addEventListener("click", async e => {
     if (document.activeElement) document.activeElement.blur(); takipKaydet((S.veri.ayarlar.takip || []).concat([g])); return;
   }
   if (t.dataset.takipsil != null) { const l = (S.veri.ayarlar.takip || []).slice(); l.splice(+t.dataset.takipsil, 1); takipKaydet(l); return; }
+  if (t.id === "urunEkle") {
+    const url = ($("#urunLink").value || "").trim(); if (!/^https?:\/\//i.test(url)) { toast("Mağaza linkini https:// ile yapıştırın"); return; }
+    t.disabled = true; t.textContent = "Fiyat okunuyor…";
+    try {
+      const r = await fetch("/api/ekle", {method:"POST", headers:{"Content-Type":"application/json","X-Kasim":"1"}, body: JSON.stringify({url})});
+      const j = await r.json(); if (!r.ok) throw new Error(j.hata || "Eklenemedi");
+      if (j.zaten) toast("Bu ürün zaten listende");
+      else if (j.fiyat) toast(`Eklendi: ${tl(j.fiyat)} · ${(j.baslik || "").slice(0, 40)}`);
+      else toast("Eklendi ama fiyat okunamadı: " + (j.mesaj || "mağaza sayfası okunamadı") + ". Mağazada görmek için karttaki bağlantıyı kullanın.");
+      $("#urunLink").value = ""; if (document.activeElement) document.activeElement.blur(); await yukle();
+    } catch (err) { toast(err.message); t.disabled = false; t.textContent = "Ekle"; }
+    return;
+  }
+  if (t.dataset.urunsil) {
+    try {
+      const r = await fetch("/api/ekle", {method:"POST", headers:{"Content-Type":"application/json","X-Kasim":"1"}, body: JSON.stringify({islem:"sil", id: t.dataset.urunsil})});
+      if (!r.ok) throw new Error("Çıkarılamadı");
+      toast("Takipten çıkarıldı"); await yukle();
+    } catch (err) { toast(err.message); }
+    return;
+  }
   if (t.dataset.gecmis) {
     t.disabled = true; t.textContent = "Kanallarda aranıyor…";
     try {
@@ -3651,6 +4047,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.id === "takipKelime") { e.preventDefault(); $("#takipEkle").click(); }
+  if (e.key === "Enter" && e.target.id === "urunLink") { e.preventDefault(); $("#urunEkle").click(); }
   if (e.key === "Enter" && e.target.id === "ara") { e.target.blur(); const q = S.f.ara.trim(); if (q.length >= 2) { clearTimeout(S.araZaman); kanallardaAra(q); } }
 });
 document.addEventListener("change", e => {

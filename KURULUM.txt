@@ -63,8 +63,43 @@ Hedef fiyat alarmı:
 - Bir ürün kartında "🎯 Hedef fiyat"a basın, istediğiniz fiyatı yazıp "Alarm kur" deyin.
 - Kanallar aynı ürünü o fiyata ya da altına paylaşınca kart işaretlenir ve
   telefona bildirim gelir. Alarmlar "Takibim" sekmesinde listelenir.
-- Program yalnızca kanallarda paylaşılan fiyatları görür; mağazanın sitesini
-  kendisi taramaz. Ürün hiç paylaşılmazsa alarm çalmaz.
+- Kanallarda paylaşılmayan bir ürünü de takip edebilirsiniz: aşağıdaki
+  "Kendi ürününü ekle" bölümüne bakın.
+
+
+D) KENDİ ÜRÜNÜNÜ EKLE (kanalda paylaşılmasa da fiyatı izlensin)
+---------------------------------------------------------------
+1) "Takibim" sekmesinin üstündeki kutuya mağazadaki ürün sayfasının bağlantısını
+   yapıştırın (Trendyol, Hepsiburada, Amazon, n11, Teknosa, MediaMarkt…) ve
+   "Ekle" deyin. Program sayfadan adı, fiyatı ve barkodu okur; her yenilemede
+   fiyatı mağazadan tekrar okur. Karttan hedef fiyat alarmı kurabilirsiniz.
+2) Kartta şunları görürsünüz:
+   - "Eklediğinizde X idi, şimdi %Y daha ucuz/pahalı"
+   - "Son 30 günde görülen en düşük fiyat" onayı ya da "30 günde daha ucuzu
+     görüldü" uyarısı (Fiyat Etiketi Yönetmeliği'ndeki 30 gün ölçütü)
+   - "Sepette %10 indirim" gibi etiket varsa sepette ödenecek yaklaşık tutar
+   - Fiyat en son ne zaman okundu; 1,5 saatten eskiyse "değişmiş olabilir" notu
+3) Telefondan tek dokunuşla eklemek için (isteğe bağlı):
+   Programın şu adresi var:  http://BILGISAYAR-IP:8765/ekle?url=MAĞAZA-LİNKİ
+   Telefon QR ile bir kez giriş yaptıysa bu adres açıldığında ürün eklenir ve
+   Takibim sekmesi açılır. Android'de "HTTP Shortcuts" (ücretsiz) uygulamasında
+   yeni kısayol > URL kısmına  http://BILGISAYAR-IP:8765/ekle?url={share_text}
+   yazıp "Paylaşım menüsünde göster"i açarsanız mağaza uygulamasındaki
+   "Paylaş" menüsünden doğrudan programa gönderebilirsiniz. (IP adresi
+   programın siyah penceresinde yazar; telefon aynı Wi-Fi'de olmalı.)
+   Daha basit yol: mağaza uygulamasında Paylaş > Bağlantıyı kopyala, sonra
+   Takibim sekmesindeki kutuya yapıştır.
+
+Doğru fiyat için programın yaptığı kontroller (kartlardaki rozetler):
+- "⚠️ Eski fiyat şişirilmiş görünüyor": paylaşımdaki üstü çizili fiyat son 60
+  günde hiç görülmemiş; gerçek indirim oranı görülen en yüksek fiyata göre yazılır.
+- "🧐 Kontrol et": fiyat son 30 günün en düşüğünden %70'ten fazla aşağıda;
+  çoğu zaman yanlış okunmuş fiyat ya da farklı beden/renk/kapasitedir.
+  Bu ürünler mağazada doğrulanmadan "Kaçırılmaz" listesine girmez.
+- "Son 30 günde … görüldü, bu daha pahalı": kanal indirim diye paylaşmış ama
+  yakın zamanda daha ucuzu kaydedilmiş.
+- "N mağazada · en ucuz …": aynı ürün (barkod ya da model kodu eşleşen) birden
+  fazla mağazada görüldüyse en ucuz mağaza gösterilir.
 
 Uygulama simgesi:
 - Telefonda tarayıcı menüsü (⋮) > "Ana ekrana ekle" dediğinizde "Fırsatlar" adıyla
