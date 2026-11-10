@@ -73,6 +73,9 @@ AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (5, 360), "bildirim_esik": (10,
 GECMIS_GUN = 60            # "indirim oranı" için bakılan yakın geçmiş (gün)
 ARSIV_GUN = 365            # fiyat arşivi (kanal geçmişinden bulunanlar dahil) kaç gün tutulsun
 ARSIV_OTO_ADET = 5         # her yenilemede geçmişi kanal arşivinden tamamlanacak ürün sayısı
+ARAMA_ARSIV_GUN = 90       # aramada bulunabilecek eski paylaşımların en fazla yaşı (gün)
+ARAMA_ARSIV_EN_FAZLA = 40000
+GERIYE_TARAMA_SN = 60      # her yenilemede kanalların daha eski sayfalarını okumaya ayrılan süre (saniye)
 EN_FAZLA_GONDERI = 4000
 UA = ("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
@@ -1303,6 +1306,8 @@ class Depo:
             "son_guncelleme": v.get("son_guncelleme"),
             "arsiv_arama": v.get("arsiv_arama") or {},
             "bildirilen": v.get("bildirilen") or {},
+            "arama_arsivi": v.get("arama_arsivi") or {},   # id -> [ts, başlık, fiyat, mağaza, tür, kodlar]
+            "derin": v.get("derin") or {},                 # kanal -> geriye doğru okumanın kaldığı yer
         }
         self.veri["canli"] = v.get("canli") or {}
         self.veri["canli_son"] = {k: x for k, x in (v.get("canli_son") or {}).items()
@@ -1394,6 +1399,89 @@ class Depo:
         self._kacirilmazlari_dogrula()
         if self.ayarlar.get("gecmis_tamamla", True):
             self._arsivi_tamamla(ARSIV_OTO_ADET)
+        self._geriye_tara()
+
+    # --- geriye doğru tarama ve arama arşivi ---------------------------------
+    def _arsive_ekle(self, liste):
+        ar = self.veri["arama_arsivi"]
+        for g in liste:
+            ar[g["id"]] = [g["ts"], g.get("baslik") or "", g.get("fiyat"), g.get("magaza"), g.get("tur"),
+                           list(g.get("kodlar") or [])[:3]]
+
+    def _eskileri_isle(self, liste):
+        """Geriye doğru okunan paylaşımlar: saklama süresindekiler listeye, fiyatlılar fiyat geçmişine, hepsi arşive."""
+        ssinir = int((simdi() - timedelta(days=self.ayarlar["saklama_gun"])).timestamp())
+        gsinir = int((simdi() - timedelta(days=ARSIV_GUN)).timestamp())
+        gonderiler, gecmis = self.veri["gonderiler"], self.veri["gecmis"]
+        for g in liste:
+            if g["ts"] >= ssinir:
+                gonderiler.setdefault(g["id"], g)
+            elif g.get("fiyat") and g.get("anahtar") and g["ts"] >= gsinir:
+                kayit = gecmis.setdefault(g["anahtar"], [])
+                if all(k[2] != g["id"] for k in kayit):
+                    kayit.append([g["ts"], g["fiyat"], g["id"]])
+                    kayit.sort()
+        self._arsive_ekle(liste)
+
+    def _geriye_tara(self, sure_sn=GERIYE_TARAMA_SN):
+        """Her yenilemede kanalların daha eski sayfalarından biraz daha okur. Böylece liste saklama süresi
+        boyunca dolar, aramada da son ARAMA_ARSIV_GUN güne ait paylaşımlar bulunur."""
+        bas = time.time()
+        asinir = int((simdi() - timedelta(days=ARAMA_ARSIV_GUN)).timestamp())
+        with self.kilit:
+            derin, sira = self.veri["derin"], []
+            for k in self.ayarlar["kanallar"]:
+                d = derin.get(k.lower())
+                if d is None:
+                    nolar = [g["no"] for g in self.veri["gonderiler"].values() if g["kanal"].lower() == k.lower()]
+                    if not nolar:
+                        continue
+                    d = derin[k.lower()] = {"once": min(nolar), "bitti": False}
+                if not d.get("bitti"):
+                    sira.append(k)
+        okunan = 0
+        while sira and time.time() - bas < sure_sn:
+            for k in list(sira):
+                if time.time() - bas >= sure_sn:
+                    break
+                d = derin[k.lower()]
+                try:
+                    _, liste = sayfayi_coz(sayfa_getir(f"https://t.me/s/{k}?before={d['once']}", 15))
+                except Exception:
+                    sira.remove(k)          # bu sefer olmadı; sonraki yenilemede kaldığı yerden devam eder
+                    continue
+                okunan += 1
+                with self.kilit:
+                    en_kucuk = min((g["no"] for g in liste), default=None)
+                    if en_kucuk is None or en_kucuk >= d["once"]:
+                        d["bitti"] = True
+                        sira.remove(k)
+                        continue
+                    d["once"] = en_kucuk
+                    self._eskileri_isle(liste)
+                    if min(g["ts"] for g in liste) < asinir:
+                        d["bitti"] = True
+                        sira.remove(k)
+                time.sleep(1.2)
+        if okunan:
+            with self.kilit:
+                self._gecmisi_guncelle()
+                self._temizle()
+                try:
+                    json_yaz(VERI_DOSYASI, self.veri)
+                except OSError:
+                    pass
+
+    def arsiv_listesi(self):
+        """Ana listede olmayan eski paylaşımlar (yalnızca arama için, hafif biçimde)."""
+        with self.kilit:
+            kanallar = {k.lower() for k in self.ayarlar["kanallar"]}
+            listede = set(self.veri["gonderiler"])
+            satirlar = [[k, v[0], v[1], v[2], MAGAZA_AD.get(v[3], "Diğer"), v[4], v[5]]
+                        for k, v in self.veri["arama_arsivi"].items()
+                        if k not in listede and k.split("/")[0].lower() in kanallar]
+        satirlar.sort(key=lambda x: -x[1])
+        return {"a": satirlar}
 
     def _kacirilmazlari_dogrula(self, en_fazla=15):
         """Yeni ve çok ucuz görünen ürünlerin fiyatını mağazada doğrular (az sayıda, sırayla)."""
@@ -1518,6 +1606,12 @@ class Depo:
                 kayitlar.append([g["ts"], g["fiyat"], g["id"]])
 
     def _temizle(self):
+        self._arsive_ekle(self.veri["gonderiler"].values())
+        asinir = int((simdi() - timedelta(days=ARAMA_ARSIV_GUN)).timestamp())
+        ar = {k: v for k, v in self.veri["arama_arsivi"].items() if v[0] >= asinir}
+        if len(ar) > ARAMA_ARSIV_EN_FAZLA:
+            ar = dict(sorted(ar.items(), key=lambda kv: kv[1][0], reverse=True)[:ARAMA_ARSIV_EN_FAZLA])
+        self.veri["arama_arsivi"] = ar
         sinir = int((simdi() - timedelta(days=self.ayarlar["saklama_gun"])).timestamp())
         g = {k: v for k, v in self.veri["gonderiler"].items() if v.get("ts", 0) >= sinir}
         if len(g) > EN_FAZLA_GONDERI:
@@ -2114,6 +2208,8 @@ class Isleyici(BaseHTTPRequestHandler):
         elif yol == "/api/ara":
             q = urllib.parse.parse_qs(parca.query).get("q", [""])[0]
             self._json(200, {"idler": self.depo.ara(q)})
+        elif yol == "/api/arsiv":
+            self._json(200, self.depo.arsiv_listesi())
         else:
             self._json(404, {"hata": "bulunamadı"})
 
@@ -2220,11 +2316,15 @@ STATIK_ARAYUZ_EKI = r"""<script>
   const oku = (k, v) => { try { const x = JSON.parse(localStorage.getItem(k)); return x == null ? v : x; } catch (e) { return v; } };
   const sade = t => String(t || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
   const yanit = (v, st) => new Response(JSON.stringify(v), {status: st || 200, headers: {"Content-Type": "application/json"}});
-  let son = null;
+  let son = null, sonSurum = null;
+  const kopya = v => (typeof structuredClone === "function" ? structuredClone(v) : JSON.parse(JSON.stringify(v)));
   async function veriAl(){
+    let surum = null;
+    try { surum = (await (await asil("surum.json?t=" + Date.now(), {cache: "no-store"})).json()).s; } catch (e) {}
+    if (son && surum && surum === sonSurum) return kopya(son);
     const r = await asil("veri.json?t=" + Date.now(), {cache: "no-store"});
-    son = await r.json();
-    return son;
+    son = await r.json(); sonSurum = surum;
+    return kopya(son);
   }
   function kisisel(v){
     const takip = oku("kf_takip", []), alarmlar = oku("kf_alarmlar", []);
@@ -2256,6 +2356,7 @@ STATIK_ARAYUZ_EKI = r"""<script>
       } else al = al.filter(a => a.id !== b.alarm_id);
       sakla("kf_alarmlar", al); return yanit({ok: true, alarmlar: al});
     }
+    if (url.startsWith("/api/arsiv")) { try { return yanit(await (await asil("arsiv.json?t=" + Date.now(), {cache: "no-store"})).json()); } catch (e) { return yanit({a: []}); } }
     if (url.startsWith("/api/ara") || url.startsWith("/api/gecmis")) return yanit({idler: [], ok: true});
     if (url.startsWith("/api/canli")) return yanit({durum: "hata", mesaj: "Sitede anlık kontrol yok"});
     if (url.startsWith("/api/")) return yanit({hata: "Sitede bu işlem yok"}, 400);
@@ -2292,6 +2393,12 @@ def statik_site(cikis):
     d["ayarlar"] = {k: v for k, v in d["ayarlar"].items() if k not in ("ntfy_konu", "ntfy_sunucu", "alarmlar", "takip")}
     with open(os.path.join(cikis, "veri.json"), "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, separators=(",", ":"))
+    arsiv = depo.arsiv_listesi()
+    with open(os.path.join(cikis, "arsiv.json"), "w", encoding="utf-8") as f:
+        json.dump(arsiv, f, ensure_ascii=False, separators=(",", ":"))
+    # Telefon bu küçük dosyaya bakar; büyük veri.json yalnızca güncelleme olunca yeniden indirilir
+    with open(os.path.join(cikis, "surum.json"), "w", encoding="utf-8") as f:
+        json.dump({"s": d.get("son_guncelleme"), "n": len(d["firsatlar"])}, f)
     h = ARAYUZ_HTML.replace('href="/manifest.webmanifest"', 'href="manifest.webmanifest"') \
         .replace('href="/ikon-32.png"', 'href="ikon-32.png"').replace('href="/ikon-180.png"', 'href="ikon-180.png"')
     h = h.replace('<script>\n"use strict";\ntry {', STATIK_ARAYUZ_EKI + '<script>\n"use strict";\ntry {', 1)
@@ -2308,7 +2415,10 @@ def statik_site(cikis):
             f.write(base64.b64decode(b64))
     with open(os.path.join(cikis, ".nojekyll"), "w") as f:
         f.write("")
-    print(f"Site hazır: {cikis} · {len(d['firsatlar'])} paylaşım · {sum(1 for x in d['firsatlar'] if x.get('kacirilmaz'))} kaçırılmaz")
+    derin = depo.veri["derin"]
+    print(f"Site hazır: {cikis} · {len(d['firsatlar'])} paylaşım · {sum(1 for x in d['firsatlar'] if x.get('kacirilmaz'))} kaçırılmaz"
+          f" · arama arşivinde {len(arsiv['a'])} eski paylaşım"
+          f" · geriye tarama biten kanal {sum(1 for x in derin.values() if x.get('bitti'))}/{len(derin)}")
 
 
 def main():
@@ -2757,14 +2867,22 @@ function aramaParcalari(q){
   return out;
 }
 const bitisik = s => s.replace(/[\s\-_.\/]+/g, "");
+// "telefonlar", "laptopu", "kulaklığı" gibi ekli yazımlarda kökü de dene
+const EKLER = ["larini","lerini","larin","lerin","lari","leri","lar","ler","sini","sunu","si","su","yi","yu","ni","nu","i","u","e","a"];
+function kok(p){
+  if (p.length < 5 || /\d/.test(p)) return null;
+  for (const e of EKLER) if (p.endsWith(e) && p.length - e.length >= (e.length === 1 ? 6 : 4)) return p.slice(0, -e.length);
+  return null;
+}
+function secenekler(p){ const a = ESANLAM[p] || [p], k = kok(p); return k && !a.includes(k) ? a.concat([k]) : a; }
 function aramaEslesir(x, parca){
-  const m = sadeJS(x.baslik + " " + x.metin + " " + (x.kodlar || []).join(" ") + " " + x.magaza_ad), mb = bitisik(m);
-  return parca.every(p => (ESANLAM[p] || [p]).some(a => m.includes(a) || (bitisik(a).length >= 3 && mb.includes(bitisik(a)))));
+  const m = sadeJS(x.baslik + " " + (x.metin || "") + " " + (x.kodlar || []).join(" ") + " " + (x.magaza_ad || "")), mb = bitisik(m);
+  return parca.every(p => secenekler(p).some(a => m.includes(a) || (bitisik(a).length >= 3 && mb.includes(bitisik(a)))));
 }
 function aramaPuani(x, q, parca){
   const b = sadeJS(x.baslik);
   if (b.includes(q) || bitisik(b).includes(bitisik(q))) return 0;
-  if (parca.every(p => (ESANLAM[p] || [p]).some(a => b.includes(a) || bitisik(b).includes(bitisik(a))))) return 1;
+  if (parca.every(p => secenekler(p).some(a => b.includes(a) || bitisik(b).includes(bitisik(a))))) return 1;
   return 2;
 }
 function aramaVar(){ return S.f.ara.trim().length > 0 && ["one","ucuz","tum","kupon"].includes(S.sekme); }
@@ -3198,11 +3316,21 @@ function listeCiz(){
     : S.sekme === "kupon" ? `<div class="not">Kodlar kanalların paylaştığı haliyle gösterilir; koda dokununca kopyalanır. Program bir kodun hâlâ geçerli olduğunu doğrulayamaz: sepette kabul edilmezse süresi dolmuş, stok bitmiş ya da kategori/limit koşulu tutmuyor olabilir. “Paylaşım metni ve koşullar”daki hariç tutulan ürünlere bakın.</div>`
     : `<div class="not">Fiyatlar kanalın paylaştığı andaki fiyattır. Turuncu notlu ürünlerde fiyat sepette ya da birden fazla adet alınca oluşur; ürün sayfasında daha yüksek görünür.${bitenler ? ` Kanalın “bitti” diye güncellediği ${bitenler} fırsat gizlendi.` : ""}</div>`;
   let govde;
-  const aramaBas = arama ? `<div class="arama-ozet"><b>“${esc(S.f.ara.trim())}”</b> için ${d.length} sonuç${S.araDurum === "araniyor" ? " · kanallarda da aranıyor…" : S.araDurum === "bitti" ? " · kanallar da tarandı" : ""}
+  if (arama && !S.arsiv) arsivYukle();
+  const arsivBulunan = arama ? arsivSonuclari(new Set(d.map(x => x.id))) : [];
+  const tgLinkleri = arama && S.veri ? (S.veri.ayarlar.kanallar || []).map(k => `<a href="https://t.me/s/${encodeURIComponent(k)}?q=${encodeURIComponent(S.f.ara.trim())}" target="_blank" rel="noopener noreferrer">${esc(kanalAd(k))}</a>`).join(" · ") : "";
+  const arsivBolum = !arama ? "" : (arsivBulunan.length ? `<section class="eski-liste"><h2 class="bolum">Arşivde bulunanlar <span class="say">${arsivBulunan.length}</span></h2>
+      <div class="not">Son ${S.veri && S.veri.arsiv_gun || 90} günde paylaşılmış, ana listede olmayan paylaşımlar. Yazan fiyat paylaşıldığı günün fiyatıdır; <b>bugün geçerli olmayabilir</b>. Paylaşımı açmak için ürüne dokunun.</div>
+      <table class="d-tablo"><thead><tr><th>Ürün</th><th>Tarih</th><th class="sag">O günkü fiyat</th></tr></thead><tbody>
+      ${arsivBulunan.slice(0, 60).map(x => `<tr><td><a href="https://t.me/${esc(x.id)}" target="_blank" rel="noopener noreferrer">${esc(x.baslik || "Paylaşım")}</a><br><small>${esc(x.magaza_ad)} · ${esc(kanalAd(x.id.split("/")[0]))}${x.kodlar.length ? " · kod: " + esc(x.kodlar.join(", ")) : ""}</small></td><td>${tarihKisa(x.ts)}</td><td class="sag">${x.fiyat != null ? tl(x.fiyat) : "–"}</td></tr>`).join("")}
+      </tbody></table>${arsivBulunan.length > 60 ? `<div class="ipucu">İlk 60 gösteriliyor; aramayı daraltın (ör. model adı ekleyin).</div>` : ""}</section>`
+      : (S.arsivYukleniyor ? `<div class="ipucu">Arşivde aranıyor…</div>` : ""))
+    + `<div class="ipucu">Bulamadığınız ürünü doğrudan Telegram kanallarında arayın: ${tgLinkleri}</div>`;
+  const aramaBas = arama ? `<div class="arama-ozet"><b>“${esc(S.f.ara.trim())}”</b> için ${d.length + arsivBulunan.length} sonuç${S.araDurum === "araniyor" ? " · kanallarda da aranıyor…" : S.araDurum === "bitti" ? " · kanallar da tarandı" : S.arsiv ? " · arşiv de tarandı" : ""}
       · <a href="https://www.akakce.com/arama/?q=${encodeURIComponent(S.f.ara.trim())}" target="_blank" rel="noopener noreferrer">Akakçe’de fiyatları karşılaştır</a></div>
       <div class="ipucu" style="margin:-4px 0 10px">Arama tüm sekmelerde ve tüm kayıtlarda yapılır; mağaza, kategori ve oran filtreleri arama sırasında uygulanmaz. Adında geçenler önce gelir.</div>${S.araDurum === "onizleme" ? `<div class="not">Ön izleme kanallarda arama yapamaz; yalnızca bu sayfadaki paylaşımlarda arar. Telefondaki program aynı aramayı Telegram kanallarında da yapar ve daha eski paylaşımları da getirir.</div>` : ""}` : "";
   if (!S.veri) govde = `<div class="bos-durum">Yükleniyor…</div>`;
-  else if (arama && !d.length) govde = `<div class="bos-durum">${S.araDurum === "araniyor" ? "Kanallarda aranıyor…" : S.araDurum === "onizleme" ? "Bu sayfadaki paylaşımlarda bulunamadı." : S.araDurum === "bitti" ? "Kayıtlı fırsatlarda ve kanalların aramasında bulunamadı. Marka ya da model adıyla deneyin." : "Kayıtlı fırsatlarda yok; kanallarda aranıyor…"}</div>`;
+  else if (arama && !d.length) govde = (arsivBulunan.length ? `<div class="bos-durum">Son paylaşımlarda yok; aşağıda arşivde bulunanlar var.</div>` : `<div class="bos-durum">${S.araDurum === "araniyor" ? "Kanallarda aranıyor…" : S.araDurum === "onizleme" ? "Bu sayfadaki paylaşımlarda bulunamadı." : S.araDurum === "bitti" ? "Kayıtlı fırsatlarda ve kanalların aramasında bulunamadı. Marka ya da model adıyla deneyin." : S.araDurum === "statik" ? (S.arsivYukleniyor ? "Son paylaşımlarda yok; arşivde aranıyor…" : "Son paylaşımlarda ve arşivde bulunamadı. Marka ya da model adıyla deneyin ya da aşağıdan Telegram’da arayın.") : "Kayıtlı fırsatlarda yok; kanallarda aranıyor…"}</div>`) + arsivBolum;
   else if (!ham.length) govde = `<div class="bos-durum">${S.veri.yenileniyor ? "Fırsatlar çekiliyor, birkaç saniye sürebilir…" : "Bu sekmede henüz fırsat yok. “Yenile”ye dokunun ya da “Tüm ürünler” sekmesine bakın."}</div>`;
   else if (!d.length) govde = `<div class="bos-durum">Filtreye uyan fırsat yok. Zaman aralığını “Tüm kayıtlar” yapmayı deneyin.</div>`;
   else if (arama) {
@@ -3213,7 +3341,7 @@ function listeCiz(){
           <div class="not">Bunlar ${ESKI_GUN} günden eski paylaşımlar; yazan fiyat o tarihteki fiyattır, <b>bugün geçerli değildir</b>. Yalnızca geçmiş fiyat fikri vermek için listelenir.</div>
           <table class="d-tablo"><thead><tr><th>Ürün</th><th>Tarih</th><th class="sag">O günkü fiyat</th></tr></thead><tbody>
           ${eski.slice(0, 40).map(x => `<tr><td>${x.tur === "urun" ? `<a href="#" data-detay="${esc(x.id)}">${esc(x.baslik)}</a>` : esc(x.baslik)}<br><small>${esc(x.magaza_ad)} · ${esc(kanalAd(x.kanal))}</small></td><td>${tarihKisa(x.ts)}</td><td class="sag">${x.fiyat != null ? tl(x.fiyat) : "–"}</td></tr>`).join("")}
-          </tbody></table></section>` : "");
+          </tbody></table></section>` : "") + arsivBolum;
   }
   else govde = d.slice(0, S.limit).map(kartSec).join("") + (d.length > S.limit ? `<button type="button" class="daha" id="daha">Daha fazla göster (${d.length - S.limit})</button>` : "");
   $("#icerik").innerHTML = `
@@ -3334,9 +3462,28 @@ function ayarCiz(){
   </div>`;
 }
 
+async function arsivYukle(){
+  if (S.arsivYukleniyor || (S.arsiv && Date.now() - S.arsivZaman < 15 * 60000)) return;
+  S.arsivYukleniyor = true;
+  try {
+    const j = await (await fetch("/api/arsiv", {cache: "no-store"})).json();
+    S.arsiv = (j.a || []).map(r => ({id: r[0], ts: r[1], baslik: r[2], fiyat: r[3], magaza_ad: r[4], tur: r[5], kodlar: r[6] || [], metin: ""}));
+    S.arsivZaman = Date.now();
+  } catch (e) { S.arsiv = S.arsiv || []; S.arsivZaman = Date.now() - 14 * 60000; }
+  S.arsivYukleniyor = false;
+  if (aramaVar()) cizGovde();
+}
+function arsivSonuclari(gorulen){
+  if (!S.arsiv || !aramaVar()) return [];
+  const q = sadeJS(S.f.ara.trim()), parca = aramaParcalari(q);
+  return S.arsiv.filter(x => !gorulen.has(x.id) && aramaEslesir(x, parca))
+    .map(x => (x._puan = aramaPuani(x, q, parca), x)).sort((a, b) => (a._puan - b._puan) || (b.ts - a.ts));
+}
 async function kanallardaAra(q){
   S.araOnbellek = S.araOnbellek || {};
   if (S.veri && S.veri.onizleme) { S.araDurum = "onizleme"; ciz(); return; }
+  arsivYukle();
+  if (S.veri && S.veri.statik) { S.araDurum = "statik"; ciz(); return; }
   if (S.araOnbellek[sadeJS(q)]) { S.araDurum = "bitti"; ciz(); return; }
   S.araDurum = "araniyor"; ciz();
   try {
