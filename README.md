@@ -25,3 +25,12 @@ Bilgisayarda çalıştırmak için: `Kasim-Firsatlari-Baslat.bat` (ayrıntılar 
   Telefondan hızlı ekleme: `http://BILGISAYAR-IP:8765/ekle?url=LİNK` (bkz. `KURULUM.txt` D bölümü).
 - **Takip kelimeleri kanallarda otomatik aranır:** her yenilemede sırayla 3 kelime kanal arşivinde aranır.
 - Kanal sınırı 25'e çıkarıldı; geriye doğru tarama ve 90 günlük arama arşivi sürüyor.
+
+## 2.9
+
+- **8 yeni Telegram kanalı** (toplam 14): firsatdolu, indirimalarmi_tr, amazonindirimtr, ucuzkenaldim, firsatzade,
+  gunlukfirsatbulteni, uygunfiyatdedektifi, onual_ekstra. Varsayılan listeyi hiç değiştirmediyseniz otomatik eklenir.
+- **Öne çıkanlar eşiği %25 → %15.**
+- **Akakçe "Fark Atan Fiyatlar"** (ilk 3 sayfa): en ucuz satıcının diğerlerinden belirgin ucuz olduğu ürünler.
+  Kartta "⚖️ Akakçe: diğer satıcılardan %X ucuz" yazar; bu oran **fiyat düşüşü değil, satıcılar arası farktır**.
+  Bu ürünler için bildirim gönderilmez. Ayarlar'dan kapatılabilir.

@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "2.8"
+SURUM = "2.9"
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
 VERI_DOSYASI = os.path.join(VERI_DIZINI, "veri.json")
@@ -54,7 +54,10 @@ AYAR_DOSYASI = os.path.join(VERI_DIZINI, "ayarlar.json")
 ANAHTAR_DOSYASI = os.path.join(VERI_DIZINI, "erisim_anahtari.txt")
 
 VARSAYILAN_AYARLAR = {
-    "kanallar": ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat"],
+    "kanallar": ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat",
+                 "firsatdolu", "indirimalarmi_tr", "amazonindirimtr", "ucuzkenaldim", "firsatzade",
+                 "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra"],
+    "akakce": True,        # Akakçe "Fark Atan Fiyatlar" listesini de oku
     "sayfa": 6,            # kanal başına okunacak sayfa (her sayfa ~20 paylaşım)
     "aralik_dk": 5,        # otomatik yenileme aralığı (dakika)
     "bildirim_esik": 40,   # bu yüzde ve üstü yeni fırsatlarda bildirim (Termux:API gerekir)
@@ -67,7 +70,13 @@ VARSAYILAN_AYARLAR = {
     "alarmlar": [],        # hedef fiyat alarmları
 }
 COZUCU_SURUM = 4   # okuma kuralları değişince artırılır; kayıtlı paylaşımlar açılışta yeniden okunur
-ESKI_VARSAYILAN_KANALLAR = ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi"]
+ESKI_VARSAYILAN_KANALLAR = [   # önceki sürümlerin varsayılan listeleri: hiç değiştirilmediyse yeni listeye geçilir
+    ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi"],
+    ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat"],
+]
+AKAKCE = "akakce"          # Akakçe'den gelen ürünlerin "kanal" adı
+AKAKCE_SAYFA = 3           # "Fark Atan Fiyatlar" listesinden okunacak sayfa (~32 ürün/sayfa)
+AKAKCE_URL = "https://www.akakce.com/fark-atan-fiyatlar/"
 NTFY_KONU_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
 AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (5, 360), "bildirim_esik": (10, 95), "saklama_gun": (1, 30)}
 GECMIS_GUN = 60            # "indirim oranı" için bakılan yakın geçmiş (gün)
@@ -1409,6 +1418,89 @@ def kanal_sayfalari(kanal, sayfa_sayisi):
     return kanal_adi, tum
 
 
+AKAKCE_URUN_RE = re.compile(r'href="((?:https://www\.akakce\.com)?/[a-z0-9-]+/en-ucuz-[a-z0-9-]+-fiyati,(\d+)\.html)"', re.I)
+
+
+def akakce_coz(h):
+    """Akakçe liste sayfasındaki ürün kartları: ad, en ucuz fiyat, diğer satıcılara göre fark (TL ve %)."""
+    eslesmeler = list(AKAKCE_URUN_RE.finditer(h))
+    urunler, gorulen = [], set()
+    for i, m in enumerate(eslesmeler):
+        uid = m.group(2)
+        if uid in gorulen:
+            continue
+        son = eslesmeler[i + 1].start() if i + 1 < len(eslesmeler) else min(len(h), m.end() + 4000)
+        # Aynı ürünün ardışık bağlantıları (resim + ad) tek kart sayılır
+        j = i + 1
+        while j < len(eslesmeler) and eslesmeler[j].group(2) == uid:
+            j += 1
+        son = eslesmeler[j].start() if j < len(eslesmeler) else min(len(h), m.end() + 4000)
+        parca = h[max(0, m.start() - 600):son]
+        bas = h[m.start():son]
+        ad = None
+        for rx in (r'title="([^"]{6,200})"', r'alt="([^"]{6,200})"'):
+            t = re.search(rx, bas)
+            if t:
+                ad = html.unescape(t.group(1)).strip()
+                break
+        metin = html_metne(bas)
+        if not ad:   # bağlantının kendi yazısı (ör. <a ...><b>Ürün adı</b></a>)
+            t = re.match(r"[^>]*>(.*?)</a>", bas, re.S | re.I)
+            t = html_metne(t.group(1)) if t else ""
+            if len(t) >= 6 and not re.search(r"\d\s*TL", t):
+                ad = t.split("\n")[0].strip()
+        if not ad:
+            satir = [x.strip() for x in metin.split("\n") if len(x.strip()) >= 6 and not re.search(r"\d\s*TL|%\s*\d|FİYAT", x)]
+            ad = satir[0] if satir else None
+        tutarlar = [tutar(x) for x in re.findall(r"(" + SAYI + r")\s*TL", metin)]
+        tutarlar = [x for x in tutarlar if x > 0]
+        if not ad or not tutarlar:
+            continue
+        fiyat = max(tutarlar)           # fark tutarı her zaman fiyattan küçüktür
+        fark = min(tutarlar) if len(tutarlar) >= 2 and min(tutarlar) < fiyat else None
+        y = re.search(r"%\s*(\d{1,2})\b", metin)
+        yuzde = int(y.group(1)) if y else (round(fark / (fiyat + fark) * 100) if fark else None)
+        resim = re.search(r'(?:data-src|src)="(https://[^"]+\.(?:jpe?g|png|webp)[^"]*)"', parca)
+        link = m.group(1)
+        if link.startswith("/"):
+            link = "https://www.akakce.com" + link
+        gorulen.add(uid)
+        urunler.append({"uid": uid, "ad": ad, "fiyat": fiyat, "fark": fark, "yuzde": yuzde, "link": link,
+                        "resim": resim.group(1) if resim else None})
+    return urunler
+
+
+def akakce_cek(sayfa_sayisi=AKAKCE_SAYFA):
+    """Akakçe "Fark Atan Fiyatlar": en ucuz satıcının diğer satıcılardan belirgin ucuz olduğu ürünler.
+    Bu oran bir fiyat düşüşü değil, satıcılar arası farktır; kartta öyle yazılır."""
+    tum, gorulen = [], set()
+    for i in range(sayfa_sayisi):
+        url = AKAKCE_URL + (f"?p={i + 1}" if i else "")
+        bulunan = akakce_coz(sayfa_getir(url))
+        if not bulunan:
+            if i == 0:
+                raise ValueError("Akakçe sayfasında ürün bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
+            break
+        for u in bulunan:
+            if u["uid"] not in gorulen:
+                gorulen.add(u["uid"])
+                tum.append(u)
+        if i + 1 < sayfa_sayisi:
+            time.sleep(1.5)
+    return tum
+
+
+def akakce_gonderi(u, tarih):
+    metin = f"{u['ad']}\n{fiyat_yaz(u['fiyat'])}"
+    g = gonderi_olustur(AKAKCE, int(u["uid"]), metin, [u["link"]], u["resim"], tarih, None)
+    g.update(baslik=u["ad"], fiyat=u["fiyat"], eski_fiyat=None, yuzde=None, yuzde_varan=False, tur="urun",
+             akakce_fark=u["yuzde"], akakce_fark_tl=u["fark"],
+             metin=(f"Akakçe “Fark Atan Fiyatlar” listesinden. En ucuz satıcı {fiyat_yaz(u['fiyat'])}"
+                    + (f"; diğer satıcılardan yaklaşık %{u['yuzde']} ({fiyat_yaz(u['fark'])}) ucuz." if u["yuzde"] and u["fark"]
+                       else ".") + " Bu oran fiyat düşüşü değil, satıcılar arası farktır; satıcıyı ve kargo ücretini kontrol edin."))
+    return g
+
+
 def hata_metni(e):
     if isinstance(e, urllib.error.HTTPError):
         return f"Sunucu hatası ({e.code})"
@@ -1447,7 +1539,7 @@ class Depo:
         ayar = dict(VARSAYILAN_AYARLAR)
         ayar.update({k: v for k, v in json_oku(AYAR_DOSYASI, {}).items() if k in VARSAYILAN_AYARLAR})
         # Eski sürümün varsayılan kanal listesini hiç değiştirmemiş kullanıcıya yeni kanalları da ekle
-        if [x.lower() for x in ayar["kanallar"]] == ESKI_VARSAYILAN_KANALLAR:
+        if [x.lower() for x in ayar["kanallar"]] in ESKI_VARSAYILAN_KANALLAR:
             ayar["kanallar"] = list(VARSAYILAN_AYARLAR["kanallar"])
         # Eski varsayılan sayfa/saklama değerlerini hiç değiştirmemiş kullanıcıda daha çok ürün göster
         if ayar.get("sayfa") == 3:
@@ -1544,6 +1636,8 @@ class Depo:
                         self.veri["kaynaklar"][kanal] = {"ok": False, "ad": onceki.get("ad"), "adet": 0,
                                                          "zaman": zaman_s, "hata": hata_metni(e)}
                 time.sleep(0.8)
+            if self.ayarlar.get("akakce", True):
+                self._akakce_yenile()
             with self.kilit:
                 self._gecmisi_guncelle()
                 self._temizle()
@@ -1562,6 +1656,30 @@ class Depo:
         if self.ayarlar.get("gecmis_tamamla", True):
             self._arsivi_tamamla(ARSIV_OTO_ADET)
         self._geriye_tara()
+
+    def _akakce_yenile(self):
+        """Akakçe listesini okur. Listeden düşen ürünler kaldırılır; ürün ilk görüldüğü zamanla kalır.
+        Bu ürünler için bildirim gönderilmez (fiyat düşüşü değil, satıcılar arası fark)."""
+        zaman_s = simdi().isoformat()
+        try:
+            urunler = akakce_cek()
+            with self.kilit:
+                gon = self.veri["gonderiler"]
+                yeni_idler = set()
+                for u in urunler:
+                    gid = f"{AKAKCE}/{int(u['uid'])}"
+                    eski = gon.get(gid)
+                    tarih = zaman(eski["tarih"]) if eski else simdi()
+                    gon[gid] = akakce_gonderi(u, tarih)
+                    yeni_idler.add(gid)
+                for gid in [k for k, v in gon.items() if v.get("kanal") == AKAKCE and k not in yeni_idler]:
+                    del gon[gid]
+                self.veri["kaynaklar"][AKAKCE] = {"ok": True, "ad": "Akakçe · Fark Atan Fiyatlar", "adet": len(urunler),
+                                                  "zaman": zaman_s, "hata": None}
+        except Exception as e:
+            with self.kilit:
+                self.veri["kaynaklar"][AKAKCE] = {"ok": False, "ad": "Akakçe · Fark Atan Fiyatlar", "adet": 0,
+                                                  "zaman": zaman_s, "hata": hata_metni(e)}
 
     # --- geriye doğru tarama ve arama arşivi ---------------------------------
     def _arsive_ekle(self, liste):
@@ -1912,10 +2030,13 @@ class Depo:
         kanallar = {k.lower() for k in self.ayarlar["kanallar"]}
         liste = []
         for g in self.veri["gonderiler"].values():
-            if g["kanal"].lower() not in kanallar and g["kanal"] != TAKIBIM:
+            akk = g["kanal"] == AKAKCE
+            if akk and not self.ayarlar.get("akakce", True):
+                continue
+            if g["kanal"].lower() not in kanallar and g["kanal"] != TAKIBIM and not akk:
                 continue
             d = {k: v for k, v in g.items() if k not in ("anahtar_eski",)}
-            d["link"] = g.get("urun_link") if g["kanal"] == TAKIBIM else f"https://t.me/{g['id']}"
+            d["link"] = g.get("urun_link") if g["kanal"] in (TAKIBIM, AKAKCE) else f"https://t.me/{g['id']}"
             d["magaza_ad"] = MAGAZA_AD.get(g["magaza"], "Diğer")
             d["rozetler"] = list(g.get("rozetler") or [])
             adaylar = []
@@ -2152,6 +2273,10 @@ class Depo:
                 b = self.veri["kaynaklar"].get(k) or {}
                 kaynaklar.append({"kanal": k, "ad": b.get("ad") or k, "ok": b.get("ok"), "hata": b.get("hata"),
                                   "adet": b.get("adet", 0), "zaman": b.get("zaman")})
+            if self.ayarlar.get("akakce", True):
+                b = self.veri["kaynaklar"].get(AKAKCE) or {}
+                kaynaklar.append({"kanal": AKAKCE, "ad": b.get("ad") or "Akakçe", "ok": b.get("ok"), "hata": b.get("hata"),
+                                  "adet": b.get("adet", 0), "zaman": b.get("zaman"), "dis": True})
             return {
                 "surum": SURUM,
                 "simdi": simdi().isoformat(),
@@ -2355,6 +2480,8 @@ class Depo:
                     a[alan] = v
             if "kupon_ara" in yeni:
                 a["kupon_ara"] = bool(yeni["kupon_ara"])
+            if "akakce" in yeni:
+                a["akakce"] = bool(yeni["akakce"])
             if "gecmis_tamamla" in yeni:
                 a["gecmis_tamamla"] = bool(yeni["gecmis_tamamla"])
             if "ntfy_konu" in yeni:
@@ -3188,7 +3315,7 @@ function kayitliYaz(k){ S.kayitliYedek = k; try { localStorage.setItem("kf-kayit
 function sekmeVerisi(sekme){
   const d = S.veri ? S.veri.firsatlar.filter(x => !x.bitti) : [];
   if (sekme === "kac") return d.filter(x => x.kacirilmaz && !bittiMi(x));
-  if (sekme === "one") return d.filter(x => x.tur === "urun" && !bittiMi(x) && !(dogrulanamadi(x) && Date.now() / 1000 - x.ts > 86400) && ((x.indirim || 0) >= 25 || x.rozetler.includes("dip") || x.rozetler.includes("kayit_dusuk")));
+  if (sekme === "one") return d.filter(x => x.tur === "urun" && !bittiMi(x) && !(dogrulanamadi(x) && Date.now() / 1000 - x.ts > 86400) && ((x.indirim || 0) >= 15 || (x.akakce_fark || 0) >= 15 || x.rozetler.includes("dip") || x.rozetler.includes("kayit_dusuk")));
   if (sekme === "ucuz") return d.filter(x => x.tur === "urun" && x.fiyat_ozet && (x.fiyat_ozet.dusus_son >= 3 || x.fiyat_ozet.dusus_ort >= 5));
   if (sekme === "tum") return d.filter(x => x.tur === "urun");
   if (sekme === "kupon") return d.filter(x => (x.tur === "kupon" || x.tur === "kampanya") && !x.urun_gibi);
@@ -3397,6 +3524,7 @@ function kart(x){
   (x.takip || []).forEach(t => rozet.push(`<span class="rozet r-takip">Takip: ${esc(t)}</span>`));
   if (x.kacirilmaz && !bittiMi(x)) rozet.push(`<span class="rozet r-kac">🔥 Kaçırılmaz${x.kacirilmaz.dogrulandi ? "" : " · doğrulanamadı"}: ${esc(x.kacirilmaz.neden.join(", "))}</span>`);
   if (x.dusus_etiketi) rozet.push(`<span class="rozet r-dusus">📉 ${esc(x.dusus_etiketi)}</span>`);
+  if (x.akakce_fark) rozet.push(`<span class="rozet r-dusus" title="Satıcılar arası fark; fiyat düşüşü değildir">⚖️ Akakçe: diğer satıcılardan %${esc(x.akakce_fark)} ucuz</span>`);
   if ((x.magazalar || []).length >= 2) rozet.push(`<span class="rozet r-mavi">${x.magazalar.length} mağazada · en ucuz ${esc(x.magazalar[0].magaza_ad)}</span>`);
   if (x.daha_once_ucuz) rozet.push(`<span class="rozet r-kirmizi">Daha önce bu fiyata ya da daha ucuza görüldü</span>`);
   if (x.kontrol_et) rozet.push(`<span class="rozet r-kirmizi" title="${esc(x.kontrol_et)}">🧐 Kontrol et: fiyat şüpheli derecede düşük</span>`);
@@ -3687,7 +3815,7 @@ function listeCiz(){
     : S.sekme === "ucuz"
     ? `<div class="not">Ürünün şimdiki paylaşım fiyatı, kanalların aynı ürün için daha önce paylaştığı fiyatlarla karşılaştırılır (son 1 yıl). Program her yenilemede birkaç ürünün geçmişini kanal arşivinden tamamlar; bir ürünün geçmişini hemen görmek için kartındaki “Geçmiş fiyatları getir”e dokunun. Karşılaştırılan fiyatlar kanalların paylaştığı net fiyatlardır; 2. el ürünler sıfır ürünle karşılaştırılmaz.</div>`
     : S.sekme === "one"
-    ? `<div class="not">%25 ve üstü indirimler ile dip fiyat işaretli ürünler. Satış fiyatı paylaşımdan ya da programın fiyat kaydından gelir; “≈” işaretli olanlar tahmindir. Almadan önce ürün sayfasında kontrol edin.${bitenler ? ` Kanalın “bitti” diye güncellediği ${bitenler} fırsat gizlendi.` : ""}</div>`
+    ? `<div class="not">%15 ve üstü indirimler, dip fiyat işaretli ürünler ve Akakçe’de diğer satıcılardan %15+ ucuz olanlar (“Akakçe” etiketli; bu oran fiyat düşüşü değil, satıcılar arası farktır). Satış fiyatı paylaşımdan ya da programın fiyat kaydından gelir; “≈” işaretli olanlar tahmindir. Almadan önce ürün sayfasında kontrol edin.${bitenler ? ` Kanalın “bitti” diye güncellediği ${bitenler} fırsat gizlendi.` : ""}</div>`
     : S.sekme === "kupon" ? `<div class="not">Kodlar kanalların paylaştığı haliyle gösterilir; koda dokununca kopyalanır. Program bir kodun hâlâ geçerli olduğunu doğrulayamaz: sepette kabul edilmezse süresi dolmuş, stok bitmiş ya da kategori/limit koşulu tutmuyor olabilir. “Paylaşım metni ve koşullar”daki hariç tutulan ürünlere bakın.</div>`
     : `<div class="not">Fiyatlar kanalın paylaştığı andaki fiyattır. Turuncu notlu ürünlerde fiyat sepette ya da birden fazla adet alınca oluşur; ürün sayfasında daha yüksek görünür.${bitenler ? ` Kanalın “bitti” diye güncellediği ${bitenler} fırsat gizlendi.` : ""}</div>`;
   let govde;
@@ -3818,6 +3946,7 @@ function ayarCiz(){
     ${sayi("bildirim_esik","Bildirim eşiği (%)",10,95, v.bildirim_var ? "Bu oran ve üstündeki yeni fırsatlarda telefona bildirim gönderilir." : "Bildirim şu an kapalı; yukarıdaki “Telefona bildirim” bölümünden açın.")}
     ${sayi("saklama_gun","Paylaşımları sakla (gün)",1,30,"Fiyat geçmişi ayrıca 1 yıl tutulur.")}
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="kupon_ara" ${a.kupon_ara !== false ? "checked" : ""}> Her kanalda “kupon” ve “kod” araması da yap</label>
+    <label class="anahtar" style="margin-top:10px"><input type="checkbox" id="akakce" ${a.akakce !== false ? "checked" : ""}> Akakçe “Fark Atan Fiyatlar” listesini de göster ${(() => { const b = v.kaynaklar.find(x => x.kanal === "akakce"); return b && b.ok != null ? `<small>(${b.ok ? b.adet + " ürün okundu" : "Hata: " + esc(b.hata)})</small>` : ""; })()}</label>
     <div class="ipucu">Son paylaşımların dışında kalan kupon paylaşımlarını da getirir. Her yenilemede kanal başına 2 sayfa daha okur.</div>
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="gecmis_tamamla" ${a.gecmis_tamamla !== false ? "checked" : ""}> Yeni ürünlerin eski fiyatlarını kanal arşivinde otomatik ara</label>
     <div class="ipucu">Her yenilemede en yeni 5 ürün için kanalların arama sayfasına bakar; “Ucuzlayanlar” sekmesi bu kayıtlarla dolar.</div>
@@ -4058,6 +4187,7 @@ document.addEventListener("change", e => {
   else if (t.id === "gecmisGizle") { S.f.gecmisGizle = t.checked; sakla(); ciz(); }
   else if (t.id === "sure") { S.f.sure = Object.assign({}, S.f.sure, {[S.sekme]: +t.value}); sakla(); ciz(); }
   else if (t.id === "kupon_ara" && S.ayarTaslak) { S.ayarTaslak.kupon_ara = t.checked; }
+  else if (t.id === "akakce" && S.ayarTaslak) { S.ayarTaslak.akakce = t.checked; }
   else if (t.id === "gecmis_tamamla" && S.ayarTaslak) { S.ayarTaslak.gecmis_tamamla = t.checked; }
   else if (S.ayarTaslak && ["aralik_dk","sayfa","bildirim_esik","saklama_gun"].includes(t.id)) { S.ayarTaslak[t.id] = +t.value; }
 });
