@@ -56,7 +56,7 @@ ANAHTAR_DOSYASI = os.path.join(VERI_DIZINI, "erisim_anahtari.txt")
 VARSAYILAN_AYARLAR = {
     "kanallar": ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat"],
     "sayfa": 6,            # kanal başına okunacak sayfa (her sayfa ~20 paylaşım)
-    "aralik_dk": 30,       # otomatik yenileme aralığı (dakika)
+    "aralik_dk": 5,        # otomatik yenileme aralığı (dakika)
     "bildirim_esik": 40,   # bu yüzde ve üstü yeni fırsatlarda bildirim (Termux:API gerekir)
     "saklama_gun": 14,      # paylaşımlar kaç gün saklansın
     "kupon_ara": True,     # her kanalda "kupon" ve "kod" aramasıyla ek paylaşım topla
@@ -69,7 +69,7 @@ VARSAYILAN_AYARLAR = {
 COZUCU_SURUM = 3   # okuma kuralları değişince artırılır; kayıtlı paylaşımlar açılışta yeniden okunur
 ESKI_VARSAYILAN_KANALLAR = ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi"]
 NTFY_KONU_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
-AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (10, 360), "bildirim_esik": (10, 95), "saklama_gun": (1, 30)}
+AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (5, 360), "bildirim_esik": (10, 95), "saklama_gun": (1, 30)}
 GECMIS_GUN = 60            # "indirim oranı" için bakılan yakın geçmiş (gün)
 ARSIV_GUN = 365            # fiyat arşivi (kanal geçmişinden bulunanlar dahil) kaç gün tutulsun
 ARSIV_OTO_ADET = 5         # her yenilemede geçmişi kanal arşivinden tamamlanacak ürün sayısı
@@ -1272,6 +1272,9 @@ class Depo:
             ayar["sayfa"] = VARSAYILAN_AYARLAR["sayfa"]
         if ayar.get("saklama_gun") == 7:
             ayar["saklama_gun"] = VARSAYILAN_AYARLAR["saklama_gun"]
+        # Eski varsayılan 30 dakikalık yenilemeyi hiç değiştirmemiş kullanıcıda 5 dakikaya indir
+        if ayar.get("aralik_dk") == 30:
+            ayar["aralik_dk"] = VARSAYILAN_AYARLAR["aralik_dk"]
         self.ayarlar = ayar
         v = json_oku(VERI_DOSYASI, {})
         self.veri = {
@@ -2218,7 +2221,7 @@ STATIK_ARAYUZ_EKI = r"""<script>
   window.fetch = async (url, opt) => {
     url = String(url);
     if (url.startsWith("/api/durum")) return yanit(kisisel(await veriAl()));
-    if (url.startsWith("/api/yenile")) { setTimeout(() => typeof toast === "function" && toast("Site her 30 dakikada bir kendiliğinden güncellenir"), 50); return yanit({ok: true}); }
+    if (url.startsWith("/api/yenile")) { setTimeout(() => typeof toast === "function" && toast("Site yaklaşık 5 dakikada bir kendiliğinden güncellenir"), 50); return yanit({ok: true}); }
     if (url.startsWith("/api/ayarlar")) {
       const a = JSON.parse((opt && opt.body) || "{}");
       if ("takip" in a) { sakla("kf_takip", a.takip); return yanit({ok: true}); }
@@ -3237,7 +3240,7 @@ function ayarCiz(){
   if (v.statik) {
     const g = v.son_guncelleme ? new Date(v.son_guncelleme).toLocaleString("tr-TR", {day:"numeric", month:"long", hour:"2-digit", minute:"2-digit"}) : "–";
     $("#icerik").innerHTML = `<div class="ayar"><section class="telefon-panel"><h2>Bu site nasıl çalışır?</h2>
-      <div class="ipucu" style="margin-top:0">Liste her 30 dakikada bir internette kendiliğinden güncellenir; bilgisayarın açık olması gerekmez. Son güncelleme: <b>${esc(g)}</b>.</div>
+      <div class="ipucu" style="margin-top:0">Liste yaklaşık 5 dakikada bir internette kendiliğinden güncellenir; bilgisayarın açık olması gerekmez. Son güncelleme: <b>${esc(g)}</b>.</div>
       <ol class="adimlar"><li>Kanallar: ${esc(v.ayarlar.kanallar.join(", "))}.</li>
       <li>Öne çıkan ve çok ucuz görünen ürünlerin fiyatı güncelleme sırasında mağazada kontrol edilir (Amazon, n11, MediaMarkt, Pazarama). Hepsiburada otomatik kontrole izin vermez.</li>
       <li>Takip kelimelerin ve hedef fiyat alarmların yalnızca bu telefonda saklanır.</li>
@@ -3288,7 +3291,7 @@ function ayarCiz(){
     ${kanallar}
     <div class="satir" style="margin-top:10px"><input type="text" id="yeniKanal" placeholder="ör. kanaladi veya t.me/kanaladi" autocomplete="off"><button type="button" class="cip" id="kanalEkle" style="flex:none">Ekle</button></div>
     <h2>Yenileme ve bildirim</h2>
-    ${sayi("aralik_dk","Otomatik yenileme (dakika)",10,360,"Program açıkken bu aralıkla yeniden okur. Kısa aralık daha çok veri ve pil harcar.")}
+    ${sayi("aralik_dk","Otomatik yenileme (dakika)",5,360,"Program açıkken bu aralıkla yeniden okur. Kısa aralık daha çok veri ve pil harcar.")}
     ${sayi("sayfa","Kanal başına sayfa",1,10,"Her sayfa yaklaşık 20 paylaşım. Daha çok sayfa = daha eski fırsatlar da gelir.")}
     ${sayi("bildirim_esik","Bildirim eşiği (%)",10,95, v.bildirim_var ? "Bu oran ve üstündeki yeni fırsatlarda telefona bildirim gönderilir." : "Bildirim şu an kapalı; yukarıdaki “Telefona bildirim” bölümünden açın.")}
     ${sayi("saklama_gun","Paylaşımları sakla (gün)",1,30,"Fiyat geçmişi ayrıca 1 yıl tutulur.")}

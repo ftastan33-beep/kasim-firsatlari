@@ -2,7 +2,7 @@ name: Fırsatları güncelle
 
 on:
   schedule:
-    - cron: "7,37 * * * *"     # her 30 dakikada bir (GitHub bazen birkaç dakika geciktirir)
+    - cron: "*/5 * * * *"      # her 5 dakikada bir (GitHub'ın izin verdiği en kısa aralık; yoğunlukta birkaç dakika gecikebilir)
   workflow_dispatch:            # Actions sekmesinden elle de çalıştırılabilir
   push:
     branches: [main]
