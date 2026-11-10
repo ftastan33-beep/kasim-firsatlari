@@ -45,3 +45,33 @@ Bilgisayarda çalıştırmak için: `Kasim-Firsatlari-Baslat.bat` (ayrıntılar 
   Fiyatlar ABD mağaza fiyatıdır (Türkiye fiyatı farklı olabilir); oran aynı mağazanın kendi fiyatına göredir.
 - Dış kaynaklar için bildirim gönderilmez; her biri Ayarlar'dan ayrı ayrı kapatılabilir. Durumları GitHub
   Actions günlüğünde "kaynak ·" satırlarında görünür.
+
+## 3.1 — İki aşamalı doğrulama hattı
+
+**Aşama 1 · Toplayıcı:** Telegram kanalları, DonanımHaber (önce RSS, olmazsa forum sayfası), Akakçe listeleri ve
+oyun indirimleri okunur; mağaza bağlantılı her yeni ürün **doğrulama kuyruğuna** yazılır (`veri.json` → `kuyruk`).
+
+**Aşama 2 · Doğrulayıcı:** Kuyruktaki ürünün mağaza sayfası açılır; ad, anlık fiyat, görsel, barkod ve stok teyit edilir.
+
+| Sonuç | Ne olur |
+|---|---|
+| ✔ Onaylı | Fiyat paylaşılanla uyuşuyor; kartta “Mağazada doğrulandı” yazar, Akakçe’deki en ucuz fiyatla karşılaştırılır |
+| Koşullu | Fiyat yalnızca sepette/kodla oluşuyor; kart kalır, uyarı gösterilir |
+| ✖ Elendi | Fiyat yükselmiş ya da stok bitmiş → listeden çıkar (Ayarlar’dan kapatılabilir) |
+| Okunamadı | Mağaza izin vermedi / sayfa açılmadı → kart kalır, güven tazelik ve kanal sayısından hesaplanır |
+
+Onaylı ürünler 3 saatte bir yeniden kontrol edilir. Geçici ağ hatası 20 ve 40 dakika sonra tekrar denenir.
+
+**Mağaza okuma:** Sayfanın görünen HTML’i yerine içine gömülü ürün verisi okunur (`__NEXT_DATA__`, `window.__…STATE__`,
+`JSON.parse(...)`, JSON-LD). Okuma sırası: `curl_cffi` (kuruluysa; gerçek Chrome imzası) → standart kütüphane
+(Android Chrome başlıkları, çerez, gzip) → başsız tarayıcı (yalnızca bilgisayarda, `KF_TARAYICI=1` ve Playwright kuruluysa).
+Bot koruması **aşılmaya çalışılmaz**: CAPTCHA çözülmez, vekil sunucu kullanılmaz; engelleyen mağaza 6 saat denenmez
+(kayıt veri dosyasında tutulur).
+
+**Önemli:** GitHub Actions sunucuları veri merkezi IP’si kullandığı için bazı mağazalar (özellikle Hepsiburada) orada
+başlıklardan bağımsız olarak engelleyebilir. Doğrulama en iyi sonucu **bilgisayardaki kurulumda** (ev internetiyle) verir.
+
+Ortam değişkenleri: `KF_DOGRULAMA_SN` (sitede doğrulamaya ayrılan süre, varsayılan 300), `KF_DH_RSS` (başka RSS adresi),
+`KF_CFFI_PROFIL` (curl_cffi taklit profili, varsayılan `chrome`), `KF_TARAYICI=1` (tarayıcı yedeği).
+
+Testler: `python -m unittest discover -s tests -v`

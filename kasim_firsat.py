@@ -23,10 +23,12 @@ Yalnızca Python standart kütüphanesini kullanır; ek paket gerekmez.
 """
 
 import argparse
+import gzip
 import hmac
 import html
 import base64
 import functools
+import http.cookiejar
 import json
 import os
 import re
@@ -42,11 +44,15 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zlib
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.0"
+SURUM = "3.1"
+GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
 VERI_DOSYASI = os.path.join(VERI_DIZINI, "veri.json")
@@ -59,7 +65,10 @@ VARSAYILAN_AYARLAR = {
                  "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra",
                  "indirimseri", "amazonozel", "firsatlarco", "umutlufirsatlar", "yurticifirsat"],
     "akakce": True,        # Akakçe listelerini de oku (fark atan, son 6 ayın en ucuzu, broşür)
-    "dhforum": False,      # DonanımHaber Sıcak Fırsatlar forumu (GitHub sunucusundan okunamadı; varsayılan kapalı)
+    # DonanımHaber Sıcak Fırsatlar (RSS → forum sayfası). GitHub sunucusundan okunamadığı için orada varsayılan kapalı
+    "dhforum": not GITHUB_ACTIONS,
+    "akakce_dogrula": True,  # doğrulanan ürünü Akakçe'deki en ucuz fiyatla karşılaştır
+    "red_gizle": True,       # mağazada fiyatı yükselmiş / stoğu bitmiş ürünleri listeden çıkar
     "oyun": True,          # Steam / Epic oyun indirimleri (CheapShark)
     "sayfa": 6,            # kanal başına okunacak sayfa (her sayfa ~20 paylaşım)
     "aralik_dk": 5,        # otomatik yenileme aralığı (dakika)
@@ -89,6 +98,9 @@ AKAKCE_LISTELERI = [       # (kısa ad, adres, görünen ad, okunacak sayfa; ~32
 DHFORUM = "dhforum"
 DHFORUM_URL = "https://forum.donanimhaber.com/sicak-firsatlar--f193"
 DHFORUM_SAYFA = 3
+# Önce RSS denenir (hafif, yapısı sabit); okunamazsa forum sayfası. Ortam değişkeniyle başka adres eklenebilir.
+DH_RSS_ADRESLERI = [u for u in [os.environ.get("KF_DH_RSS", "").strip(),
+                                "https://www.donanimhaber.com/rss/tum-sicak-firsatlar.xml"] if u]
 OYUN = "oyun"
 OYUN_URL = ("https://www.cheapshark.com/api/1.0/deals?storeID=1,25,7&onSale=1&sortBy=Deal%20Rating"
             "&pageSize=60&steamRating=70")
@@ -105,6 +117,11 @@ ARAMA_ARSIV_EN_FAZLA = 40000
 GERIYE_TARAMA_SN = 60      # her yenilemede kanalların daha eski sayfalarını okumaya ayrılan süre (saniye)
 TAKIP_ARAMA_ADET = 3       # her yenilemede kanallarda otomatik aranacak takip kelimesi sayısı (sırayla döner)
 TAKIBIM = "takibim"        # kullanıcının mağaza bağlantısıyla kendisinin eklediği ürünlerin "kanal" adı
+DOGRULAMA_YAS_SN = 48 * 3600     # kuyruğa yalnızca bu kadar yeni ürünler alınır
+DOGRULAMA_TAZE_SN = 3 * 3600     # doğrulanmış ürün bu süreden sonra yeniden kontrol edilir (fiyat değişmiş olabilir)
+DOGRULAMA_DENEME = 3             # okunamayan ürün en fazla kaç kez denensin
+ENGEL_BEKLE_SN = 6 * 3600        # otomatik okumayı engelleyen mağaza bu süre denenmez (mağazayı yormamak için)
+AKAKCE_ONBELLEK_SN = 12 * 3600
 EN_FAZLA_KANAL = 25
 EN_FAZLA_GONDERI = 4000
 UA = ("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 "
@@ -762,9 +779,9 @@ def fiyat_bilgisi(g, gk):
     return {"satis_fiyati": satis, "satis_kaynak": kaynak, "indirimli_fiyat": indirimli, "indirimli_not": not_}
 
 
-# Otomatik fiyat okumayı engelleyen mağazalar (bot koruması). Engel aşılmaz; bu ürünlerde güven,
-# paylaşımın tazeliğinden ve kaç kanalın aynı fiyatı paylaştığından hesaplanır.
-OTO_OKUNAMAZ = {"hepsiburada"}
+# Otomatik fiyat okumayı engelleyen mağazalar artık sabit yazılmıyor: engel gördükçe Depo.veri["engel"]'e kaydedilir
+# (ENGEL_BEKLE_SN boyunca denenmez). Bu ürünlerde güven, paylaşımın tazeliğinden ve kaç kanalın aynı fiyatı
+# paylaştığından hesaplanır.
 
 
 def kanal_teyidi(d):
@@ -1006,8 +1023,6 @@ def ntfy_gonder(sunucu, konu, baslik, mesaj, link=None, oncelik=3, etiketler=())
 # ---------------------------------------------------------------------------
 # Anlık fiyat: kullanıcı bir ürünü açtığında mağaza sayfasına bir kez bakılır
 # ---------------------------------------------------------------------------
-TARAYICI_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-               "Chrome/130.0.0.0 Safari/537.36")
 
 
 class _GuvenliYonlendirme(urllib.request.HTTPRedirectHandler):
@@ -1171,50 +1186,422 @@ def sayfadan_baslik(h):
     return baslik, (html.unescape(resim) if resim and resim.startswith("http") else None), gtin
 
 
-def canli_fiyat_getir(url):
-    """Mağaza sayfasını bir kez açar, güncel fiyatı okur. Sonuç: durum ok / engellendi / bulunamadi / hata."""
+# ---------------------------------------------------------------------------
+# Mağaza sayfası okuma katmanı
+#   Motor sırası: curl_cffi (gerçek Chrome TLS parmak izi, kuruluysa) → urllib (mobil Chrome başlıkları)
+#   → başsız tarayıcı (Playwright, yalnızca kuruluysa ve izin verildiyse).
+#   Engel ASILMAZ: CAPTCHA çözülmez, vekil sunucu döndürülmez. Engelleyen mağaza bir süre hiç denenmez.
+# ---------------------------------------------------------------------------
+try:                                    # isteğe bağlı: pip install curl_cffi
+    from curl_cffi import requests as _cffi
+except Exception:                       # kurulu değil ya da bu cihazda (ör. Termux) çalışmıyor
+    _cffi = None
+try:                                    # isteğe bağlı: pip install playwright && python -m playwright install chromium
+    from playwright.sync_api import sync_playwright as _sync_playwright
+except Exception:
+    _sync_playwright = None
+
+MOBIL_UA = ("Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/130.0.6723.102 Mobile Safari/537.36")
+CFFI_PROFIL = os.environ.get("KF_CFFI_PROFIL", "chrome")    # curl_cffi taklit profili
+TARAYICI_IZIN = os.environ.get("KF_TARAYICI", "") == "1"     # başsız tarayıcı yedeği yalnızca açıkça istenirse
+ENGEL_RE = re.compile(r"captcha|robot check|/errors/validatecaptcha|cf-chl|challenge-platform|attention required|"
+                      r"access denied|px-captcha|datadome|geo\.captcha-delivery|just a moment\.\.\.|"
+                      r"istek(?:iniz)? engellendi|güvenlik doğrulaması", re.I)
+_CEREZLER = http.cookiejar.CookieJar()   # mağazanın ilk ziyarette verdiği çerezler sonraki isteklerde de gönderilir
+_ISPARCACIGI = threading.local()
+_TARAYICI_KILIT = threading.Lock()
+
+
+def motor_ozeti():
+    """Hangi okuma motorları kullanılabiliyor (ayarlar sayfasında ve günlükte gösterilir)."""
+    m = (["curl_cffi"] if _cffi else []) + ["urllib"]
+    if _sync_playwright and TARAYICI_IZIN and not GITHUB_ACTIONS:
+        m.append("tarayıcı")
+    return m
+
+
+def tarayici_basliklari(url):
+    """Android Chrome'un bir ürün sayfasını açarken gönderdiği başlıklar. Google'dan gelinmiş gibi görünür
+    (Telegram linkleri de genelde aynı yoldan açılır). Tüm başlıklar aynı tarayıcıyı anlatmalı: karışık
+    imza (ör. masaüstü UA + mobil istemci ipucu) WAF'lar için en belirgin bot işaretidir."""
+    return {
+        "User-Agent": MOBIL_UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate",
+        "Referer": "https://www.google.com/",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "cross-site", "Sec-Fetch-User": "?1",
+        "Sec-CH-UA": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?1", "Sec-CH-UA-Platform": '"Android"',
+    }
+
+
+def _coz_govde(ham, kodlama, charset):
+    kodlama = (kodlama or "").lower()
+    try:
+        if "gzip" in kodlama:
+            ham = gzip.decompress(ham)
+        elif "deflate" in kodlama:
+            try:
+                ham = zlib.decompress(ham)
+            except zlib.error:
+                ham = zlib.decompress(ham, -zlib.MAX_WBITS)
+    except (OSError, zlib.error, EOFError):
+        pass
+    return ham.decode(charset or "utf-8", errors="replace")
+
+
+def _urllib_getir(url, zaman_asimi):
+    acici = urllib.request.build_opener(_GuvenliYonlendirme(), urllib.request.HTTPCookieProcessor(_CEREZLER))
+    istek = urllib.request.Request(url, headers=tarayici_basliklari(url))
+    try:
+        with acici.open(istek, timeout=zaman_asimi) as y:
+            return y.status, y.geturl(), _coz_govde(y.read(3_000_000), y.headers.get("Content-Encoding"),
+                                                    y.headers.get_content_charset())
+    except urllib.error.HTTPError as e:
+        try:
+            govde = _coz_govde(e.read(400_000), e.headers.get("Content-Encoding"), e.headers.get_content_charset())
+        except Exception:
+            govde = ""
+        return e.code, e.geturl() or url, govde
+
+
+def _cffi_getir(url, zaman_asimi):
+    """curl_cffi ile gerçek Chrome TLS/HTTP2 parmak izi. Yönlendirmeler elle izlenir: her adım internet adresi mi diye bakılır."""
+    oturum = getattr(_ISPARCACIGI, "cffi", None)
+    if oturum is None:
+        oturum = _ISPARCACIGI.cffi = _cffi.Session(impersonate=CFFI_PROFIL)
+    # UA ve istemci ipuçlarını curl_cffi profilin kendisi verir (TLS imzasıyla tutarlı olsun diye eklenmez)
+    ek = {"Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7", "Referer": "https://www.google.com/"}
+    for _ in range(6):
+        if not guvenli_dis_adres(url):
+            raise urllib.error.URLError("güvensiz yönlendirme")
+        r = oturum.get(url, headers=ek, timeout=zaman_asimi, allow_redirects=False)
+        if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location"):
+            url = urllib.parse.urljoin(url, r.headers["location"])
+            ek["Referer"] = r.url
+            continue
+        return r.status_code, str(r.url), r.text[:3_000_000]
+    raise urllib.error.URLError("çok fazla yönlendirme")
+
+
+def _tarayici_getir(url, zaman_asimi):
+    """Son çare: sayfayı başsız Chromium'da açar (JavaScript ile oluşan fiyatlar için). Yavaş; tek tek çalışır."""
+    with _TARAYICI_KILIT, _sync_playwright() as p:
+        tarayici = p.chromium.launch(headless=True)
+        try:
+            ctx = tarayici.new_context(**p.devices["Pixel 7"], locale="tr-TR", timezone_id="Europe/Istanbul")
+            sayfa = ctx.new_page()
+            yanit = sayfa.goto(url, wait_until="domcontentloaded", timeout=zaman_asimi * 1000)
+            sayfa.wait_for_timeout(2500)              # fiyatı JS ile yazan sayfalar için kısa bekleme
+            son = sayfa.url
+            if not guvenli_dis_adres(son):
+                raise urllib.error.URLError("güvensiz yönlendirme")
+            return (yanit.status if yanit else 200), son, sayfa.content()[:3_000_000]
+        finally:
+            tarayici.close()
+
+
+def engel_mi(kod, metin):
+    if kod in (403, 429, 503):
+        return True
+    return bool(ENGEL_RE.search(metin[:30000])) and not re.search(r'"@type"\s*:\s*"Product"', metin)
+
+
+def magaza_sayfasi_getir(url, zaman_asimi=20, tarayici=None):
+    """Sayfayı sırayla motorlarla dener. Dönen: {durum: ok|engellendi|hata, kod, url, html, motor, denenen}.
+    Bir motor engellenirse sıradakine geçilir; hepsi engellenirse 'engellendi' döner (aşılmaya çalışılmaz)."""
+    tarayici = (TARAYICI_IZIN and not GITHUB_ACTIONS) if tarayici is None else tarayici
+    motorlar = ([("curl_cffi", _cffi_getir)] if _cffi else []) + [("urllib", _urllib_getir)] + \
+        ([("tarayıcı", _tarayici_getir)] if tarayici and _sync_playwright else [])
+    denenen, son_engel, son_hata = [], None, None
+    for ad, f in motorlar:
+        try:
+            kod, son, metin = f(url, zaman_asimi)
+        except Exception as e:
+            denenen.append(f"{ad}: {hata_metni(e)}")
+            son_hata = e
+            continue
+        if engel_mi(kod, metin):
+            denenen.append(f"{ad}: engel (HTTP {kod})")
+            son_engel = {"durum": "engellendi", "kod": kod, "url": son, "motor": ad}
+            continue
+        if kod >= 400:
+            denenen.append(f"{ad}: HTTP {kod}")
+            return {"durum": "hata", "kod": kod, "url": son, "html": metin, "motor": ad, "denenen": denenen}
+        return {"durum": "ok", "kod": kod, "url": son, "html": metin, "motor": ad, "denenen": denenen}
+    if son_engel:
+        return dict(son_engel, html="", denenen=denenen)
+    return {"durum": "hata", "kod": None, "url": url, "html": "", "motor": None, "denenen": denenen,
+            "hata": hata_metni(son_hata) if son_hata else "okunamadı"}
+
+
+# ---------------------------------------------------------------------------
+# Gömülü JSON ayrıştırıcı
+#   Pazar yerleri ürün verisini sayfaya JSON olarak gömer (Next.js __NEXT_DATA__, window.__..._STATE__,
+#   JSON-LD). Görünen HTML'i kazımak yerine bu nesneler bulunur, ad/fiyat/stok buradan okunur.
+#   Nesneyi bulmak için düzenli ifade, okumak için json.raw_decode kullanılır (iç içe parantezde şaşmaz).
+# ---------------------------------------------------------------------------
+_SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script\s*>", re.S | re.I)
+_ATAMA_RE = re.compile(r"(?:window\.|self\.|globalThis\.)?([A-Za-z_$][\w$.]*?)\s*=\s*(?=[{\[])")
+_JSON_PARSE_RE = re.compile(r'JSON\.parse\(\s*"((?:[^"\\]|\\.){20,})"\s*\)', re.S)
+_JSON_COZ = json.JSONDecoder()
+SATIS_ANAHTAR = ("discountedPrice", "finalPrice", "finalPriceOnSale", "salePrice", "sellingPrice", "currentPrice",
+                 "priceToPay", "price", "amount", "lowPrice", "value")
+LISTE_ANAHTAR = ("originalPrice", "listPrice", "oldPrice", "strikeThroughPrice", "marketPrice", "priceBeforeDiscount",
+                 "highPrice", "regularPrice")
+AD_ANAHTAR = ("name", "productName", "title", "displayName")
+STOK_EVET = re.compile(r"instock|limitedavailability|preorder|onlineonly|instoreonly", re.I)
+STOK_HAYIR = re.compile(r"outofstock|soldout|discontinued", re.I)
+
+
+def gomulu_jsonlar(h, en_fazla=40):
+    """Sayfadaki gömülü JSON nesnelerini (kaynak türüyle) döndürür: [(tür, nesne), ...]"""
+    sonuc = []
+    for m in _SCRIPT_RE.finditer(h):
+        if len(sonuc) >= en_fazla:
+            break
+        nit, govde = m.group(1).lower(), m.group(2).strip()
+        if not govde or len(govde) > 4_000_000:
+            continue
+        govde_ = re.sub(r"^\s*(?:<!--|//\s*<!\[CDATA\[)|(?:-->|//\s*\]\]>)\s*$", "", govde).strip()
+        if "ld+json" in nit or "application/json" in nit or "__next_data__" in nit:
+            try:
+                sonuc.append(("ld" if "ld+json" in nit else "json", json.loads(govde_)))
+            except ValueError:
+                pass
+            continue
+        if "src=" in nit:
+            continue
+        # window.__PRODUCT_DETAIL_APP_INITIAL_STATE__ = {...};  /  window.__INITIAL_STATE__ = {...}
+        for a in _ATAMA_RE.finditer(govde):
+            ad = a.group(1)
+            if not re.search(r"state|data|props|product|initial|__", ad, re.I):
+                continue
+            try:
+                nesne, _ = _JSON_COZ.raw_decode(govde, a.end())
+            except ValueError:
+                continue
+            if isinstance(nesne, (dict, list)) and nesne:
+                sonuc.append(("atama:" + ad[-40:], nesne))
+        # JSON.parse("{\"product\":...}") biçimi
+        for j in _JSON_PARSE_RE.finditer(govde):
+            try:
+                nesne = json.loads(json.loads('"' + j.group(1) + '"'))
+            except ValueError:
+                continue
+            if isinstance(nesne, (dict, list)):
+                sonuc.append(("jsonparse", nesne))
+    return sonuc
+
+
+def _sayi(v):
+    """Fiyat alanı değeri: sayı, '1.299,90 TL' metni ya da {value/amount/price/text: ...} nesnesi olabilir."""
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, dict):
+        for k in ("value", "amount", "discountedPrice", "price", "sellingPrice", "text"):
+            if k in v:
+                f = _sayi(v[k])
+                if f:
+                    return f
+        return None
+    f = _fiyat_metinden(v)
+    return f if f and 0.5 <= f <= 20_000_000 else None
+
+
+def _stok_coz(x):
+    """Bir ürün nesnesinin stok durumu: True / False / None (bilinmiyor)."""
+    for k in ("inStock", "isInStock", "hasStock", "isSellable", "available", "isAvailable", "buyable"):
+        if isinstance(x.get(k), bool):
+            return x[k]
+    for k in ("soldOut", "isSoldOut", "outOfStock", "isOutOfStock"):
+        if isinstance(x.get(k), bool):
+            return not x[k]
+    for k in ("stock", "stockCount", "stockQuantity", "quantity", "availableStock"):
+        v = x.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return v > 0
+        if isinstance(v, dict) and isinstance(v.get("count", v.get("quantity")), (int, float)):
+            return v.get("count", v.get("quantity")) > 0
+    av = x.get("availability")
+    if isinstance(av, str):
+        if STOK_HAYIR.search(av):
+            return False
+        if STOK_EVET.search(av):
+            return True
+    return None
+
+
+def _resim_coz(x):
+    for k in ("image", "images", "imageUrl", "imageUrls", "thumbnail", "mainImage", "img"):
+        r = x.get(k)
+        if isinstance(r, list):
+            r = r[0] if r else None
+        if isinstance(r, dict):
+            r = r.get("url") or r.get("contentUrl") or r.get("src")
+        if isinstance(r, str) and r.startswith(("http://", "https://", "//")):
+            return "https:" + r if r.startswith("//") else r
+    return None
+
+
+def _fiyatlar_coz(x):
+    """Bir nesnenin (ve fiyat/teklif alt nesnelerinin) satış ve liste fiyatı: (satış, liste)."""
+    yerler = [x] + [x[k] for k in ("price", "prices", "priceInfo", "pricing", "offers", "offer", "winnerVariant",
+                                    "merchantListing", "listing")
+                    if isinstance(x.get(k), dict)]
+    if isinstance(x.get("offers"), list):
+        yerler += [o for o in x["offers"][:5] if isinstance(o, dict)]
+    satis = liste = None
+    for anahtar in SATIS_ANAHTAR:
+        for y in yerler:
+            if anahtar in y and anahtar not in ("value", "amount") or (anahtar in ("value", "amount") and y is not x):
+                f = _sayi(y.get(anahtar))
+                if f:
+                    satis = f
+                    break
+        if satis:
+            break
+    for anahtar in LISTE_ANAHTAR:
+        for y in yerler:
+            f = _sayi(y.get(anahtar)) if anahtar in y else None
+            if f:
+                liste = f
+                break
+        if liste:
+            break
+    if satis and liste and liste <= satis * 1.001:
+        liste = None
+    return satis, liste
+
+
+def _benzerlik(a, b):
+    ka, kb = set(anlamli_kelimeler(a or "")[:12]), set(anlamli_kelimeler(b or "")[:12])
+    return len(ka & kb) / len(ka | kb) if ka and kb else 0.0
+
+
+def urun_adaylari(nesneler, sayfa_basligi=None, en_fazla_dugum=60000):
+    """Gömülü JSON'da ürünü anlatan nesneleri bulup puanlar. En iyi aday ilk sırada döner."""
+    adaylar, yigin, sayac = [], [(t, n, 0) for t, n in nesneler], 0
+    while yigin and sayac < en_fazla_dugum:
+        tur, x, derinlik = yigin.pop()
+        sayac += 1
+        if isinstance(x, list):
+            yigin.extend((tur, v, derinlik + 1) for v in x[:200] if isinstance(v, (dict, list)))
+            continue
+        if not isinstance(x, dict) or derinlik > 30:
+            continue
+        ad = next((x[k] for k in AD_ANAHTAR if isinstance(x.get(k), str) and 3 <= len(x[k]) <= 300), None)
+        satis, liste = _fiyatlar_coz(x)
+        tip = str(x.get("@type", "")).lower()
+        if ad and satis:
+            puan = 3 + 2 * (tip == "product") + (tur == "ld") + bool(liste)
+            stok = _stok_coz(x)
+            if stok is None and isinstance(x.get("offers"), (dict, list)):
+                for o in (x["offers"] if isinstance(x["offers"], list) else [x["offers"]])[:5]:
+                    if isinstance(o, dict) and (stok := _stok_coz(o)) is not None:
+                        break
+            puan += (stok is not None) + bool(_resim_coz(x)) + bool(gtin_coz(x))
+            if sayfa_basligi:
+                puan += 4 * _benzerlik(ad, sayfa_basligi)
+            # Önerilen/benzer ürün listelerindeki kartlar ana ürünle karışmasın
+            if re.search(r"recommend|similar|related|crosssell|benzer|oneri", tur + " " + " ".join(list(x)[:30]), re.I):
+                puan -= 2
+            adaylar.append({"puan": round(puan, 2), "baslik": re.sub(r"\s+", " ", html.unescape(ad)).strip()[:160],
+                            "fiyat": satis, "liste_fiyati": liste, "stok": stok, "resim": _resim_coz(x),
+                            "gtin": gtin_coz(x), "kaynak": tur})
+        yigin.extend((tur, v, derinlik + 1) for v in x.values() if isinstance(v, (dict, list)))
+    adaylar.sort(key=lambda a: -a["puan"])
+    return adaylar
+
+
+def urun_verisi_coz(h, host):
+    """Ürün sayfasından {baslik, fiyat, liste_fiyati, stok, resim, gtin, yontem}. Bulunamayan alan None."""
+    og = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', h, re.I) or \
+        re.search(r'<meta[^>]+content="([^"]+)"[^>]+property="og:title"', h, re.I)
+    sayfa_basligi = html.unescape(og.group(1)) if og else None
+    adaylar = urun_adaylari(gomulu_jsonlar(h), sayfa_basligi)
+    en = adaylar[0] if adaylar else None
+    sonuc = {"baslik": None, "fiyat": None, "liste_fiyati": None, "stok": None, "resim": None, "gtin": None, "yontem": None}
+    if en:
+        sonuc.update({k: en[k] for k in ("baslik", "fiyat", "liste_fiyati", "stok", "resim", "gtin")})
+        sonuc["yontem"] = "Sayfadaki ürün verisi (" + ("schema.org" if en["kaynak"] == "ld" else "gömülü JSON") + ")"
+        # Aynı ürünün başka kaynaktaki kaydı eksik alanı tamamlar (ör. JSON-LD'de stok yok, uygulama verisinde var)
+        for a in adaylar[1:8]:
+            if _benzerlik(a["baslik"], en["baslik"]) < 0.6:
+                continue
+            for k in ("liste_fiyati", "stok", "resim", "gtin"):
+                if sonuc[k] is None and a[k] is not None:
+                    sonuc[k] = a[k]
+            # JSON-LD çoğu zaman indirimsiz satış fiyatını yazar; uygulama verisindeki indirimli fiyat daha düşükse o geçerli
+            if a["fiyat"] and a["kaynak"] != "ld" and en["kaynak"] == "ld" and 0.5 * sonuc["fiyat"] <= a["fiyat"] < sonuc["fiyat"]:
+                sonuc["liste_fiyati"] = sonuc["liste_fiyati"] or sonuc["fiyat"]
+                sonuc["fiyat"], sonuc["yontem"] = a["fiyat"], "Sayfadaki ürün verisi (gömülü JSON)"
+    # Amazon: ödenecek fiyat kutusu JSON'dan güvenilir; eski yöntemler de yedek olarak kalır
+    if "amazon." in host or not sonuc["fiyat"]:
+        f, y = sayfadan_fiyat(h, host)
+        if f and ("amazon." in host or not sonuc["fiyat"]):
+            sonuc["fiyat"], sonuc["yontem"] = f, y
+    if not sonuc["baslik"] or not sonuc["resim"] or not sonuc["gtin"]:
+        b, r, g = sayfadan_baslik(h)
+        sonuc["baslik"], sonuc["resim"], sonuc["gtin"] = sonuc["baslik"] or b, sonuc["resim"] or r, sonuc["gtin"] or g
+    if sonuc["stok"] is None:
+        if re.search(r'"availability"\s*:\s*"[^"]*(?:OutOfStock|SoldOut)|Şu anda mevcut değil|Currently unavailable|'
+                     r'id="outOfStock"|>\s*(?:Stokta yok|Tükendi|Bu ürün tükendi)\s*<', h, re.I):
+            sonuc["stok"] = False
+        elif re.search(r'"availability"\s*:\s*"[^"]*InStock', h):
+            sonuc["stok"] = True
+    if sonuc["baslik"]:
+        sonuc["baslik"] = re.sub(r"\s*[|\-–]\s*(?:Amazon\.com\.tr|Trendyol|Hepsiburada|n11\.com|n11|Teknosa|MediaMarkt|"
+                                 r"Vatan Bilgisayar|Pazarama|Çiçeksepeti).*$", "", sonuc["baslik"], flags=re.I).strip() or None
+    return sonuc
+
+
+def sayfa_getir_guclu(url, zaman_asimi=25):
+    """Liste/forum sayfaları için: mağaza okuma katmanıyla getirir, olmazsa anlaşılır hata fırlatır."""
+    s = magaza_sayfasi_getir(url, zaman_asimi=zaman_asimi, tarayici=False)
+    if s["durum"] == "ok":
+        return s["html"]
+    raise ValueError(("Site otomatik okumaya izin vermedi" if s["durum"] == "engellendi" else "Sayfa açılamadı")
+                     + (f" (HTTP {s['kod']})" if s.get("kod") else "") + (" · " + "; ".join(s["denenen"]) if s.get("denenen") else ""))
+
+
+URUN_SAYFASI_RE = re.compile(r"/dp/|/gp/product/|/gp/aw/d/|-p-\d|-pm-|/urun/|/product/|/p/|-p\d|\.html$|/[^/]*\d{5,}")
+
+
+def canli_fiyat_getir(url, tarayici=None):
+    """Mağaza sayfasını bir kez açar, güncel fiyatı ve stoğu okur.
+    durum: ok / stok_yok / engellendi / urun_degil / bulunamadi / hata"""
     if not url or not guvenli_dis_adres(url):
         return {"durum": "hata", "mesaj": "Bu paylaşımda mağaza bağlantısı yok."}
-    acici = urllib.request.build_opener(_GuvenliYonlendirme())
-    istek = urllib.request.Request(url, headers={
-        "User-Agent": TARAYICI_UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.6"})
-    try:
-        with acici.open(istek, timeout=20) as yanit:
-            son = yanit.geturl()
-            ham = yanit.read(3_000_000)
-            kod = yanit.headers.get_content_charset() or "utf-8"
-    except urllib.error.HTTPError as e:
-        if e.code in (403, 429, 503):
-            return {"durum": "engellendi", "mesaj": f"Mağaza otomatik kontrole izin vermedi (HTTP {e.code}).",
-                    "son_url": e.geturl() or url}
-        return {"durum": "hata", "mesaj": f"Mağaza sayfası açılamadı (HTTP {e.code})."}
-    except Exception as e:
-        return {"durum": "hata", "mesaj": "Mağaza sayfası açılamadı: " + hata_metni(e)}
-    h = ham.decode(kod, errors="replace")
+    s = magaza_sayfasi_getir(url, tarayici=tarayici)
+    son, motor = s.get("url") or url, s.get("motor")
+    if s["durum"] == "engellendi":
+        return {"durum": "engellendi", "son_url": son, "motor": motor, "denenen": s["denenen"],
+                "mesaj": f"Mağaza otomatik kontrole izin vermedi (HTTP {s.get('kod')}); fiyatı sayfayı açarak görün."}
+    if s["durum"] == "hata":
+        return {"durum": "hata", "denenen": s["denenen"],
+                "mesaj": f"Mağaza sayfası açılamadı ({'HTTP ' + str(s['kod']) if s.get('kod') else s.get('hata')})."}
+    h = s["html"]
     host = (urllib.parse.urlparse(son).hostname or "").lower()
-    if re.search(r"captcha|robot check|/errors/validatecaptcha|cf-chl|attention required|access denied|px-captcha", h[:20000], re.I) \
-            and not re.search(r'"@type"\s*:\s*"Product"', h):
-        return {"durum": "engellendi", "mesaj": "Mağaza robot doğrulaması istedi; fiyatı sayfayı açarak görün.", "son_url": son}
     yol = urllib.parse.urlparse(son).path.lower()
-    if re.search(r"/magaza/|/arama|/sr$|/s$|/kampanya|/butik/|/liste/|/store/", yol) or \
-            not re.search(r"/dp/|/gp/product/|/gp/aw/d/|-p-\d|-pm-|/urun/|/product/|/p/|-p\d|\.html$|/[^/]*\d{5,}", yol):
-        return {"durum": "urun_degil", "son_url": son,
+    if re.search(r"/magaza/|/arama|/sr$|/s$|/kampanya|/butik/|/liste/|/store/", yol) or not URUN_SAYFASI_RE.search(yol):
+        return {"durum": "urun_degil", "son_url": son, "motor": motor,
                 "mesaj": "Paylaşımdaki bağlantı ürün sayfasına değil, mağaza/arama sayfasına gidiyor; fiyatı ürünü seçerek görün."}
-    fiyat, yontem = sayfadan_fiyat(h, host)
-    if not fiyat:
-        if re.search(r"Şu anda mevcut değil|Currently unavailable|id=\"outOfStock\"|Stokta yok|Tükendi", h):
-            return {"durum": "stok_yok", "mesaj": "Ürün şu anda stokta yok (mağaza sayfası öyle diyor).", "son_url": son}
+    u = urun_verisi_coz(h, host)
+    ortak = {"son_url": son, "magaza": magaza_alani(son), "motor": motor, "baslik": u["baslik"], "resim": u["resim"],
+             "gtin": u["gtin"], "liste_fiyati": u["liste_fiyati"], "stok": u["stok"]}
+    if not u["fiyat"]:
+        if u["stok"] is False:
+            return dict(ortak, durum="stok_yok", mesaj="Ürün şu anda stokta yok (mağaza sayfası öyle diyor).")
         if "amazon." in host:
-            return {"durum": "bulunamadi", "son_url": son,
-                    "mesaj": "Amazon'da öne çıkan satıcı yok; ürün yalnızca diğer satıcılarda olabilir. Fiyatı sayfada görün."}
-        return {"durum": "bulunamadi", "mesaj": "Sayfa açıldı ama fiyat okunamadı (ürün kaldırılmış ya da stokta olmayabilir).",
-                "son_url": son}
-    stok_yok = bool(re.search(r"OutOfStock|Stokta yok|Tükendi|şu anda mevcut değil|Currently unavailable", h, re.I)) \
-        and not re.search(r"InStock", h)
-    baslik, resim, gtin = sayfadan_baslik(h)
-    return {"durum": "ok", "fiyat": fiyat, "yontem": yontem, "son_url": son, "magaza": magaza_alani(son),
-            "stok_yok": stok_yok, "kampanyalar": sayfa_kampanyalari(h, host), "baslik": baslik, "resim": resim, "gtin": gtin}
+            return dict(ortak, durum="bulunamadi",
+                        mesaj="Amazon'da öne çıkan satıcı yok; ürün yalnızca diğer satıcılarda olabilir. Fiyatı sayfada görün.")
+        return dict(ortak, durum="bulunamadi", mesaj="Sayfa açıldı ama fiyat okunamadı (fiyat sayfada JavaScript ile oluşuyor olabilir).")
+    return dict(ortak, durum="ok", fiyat=u["fiyat"], yontem=u["yontem"], stok_yok=u["stok"] is False,
+                kampanyalar=sayfa_kampanyalari(h, host))
 
 
 SEPETTE_YUZDE_RE = re.compile(r"sepette\s*(?:ek\s*)?%\s*(\d{1,2})(?!\d)|sepette\s*(?:ek\s*)?(\d{1,2})\s*%", re.I)
@@ -1492,7 +1879,7 @@ def akakce_coz(h):
 def akakce_cek(url, sayfa_sayisi):
     tum, gorulen = [], set()
     for i in range(sayfa_sayisi):
-        bulunan = akakce_coz(sayfa_getir(url + (f"?p={i + 1}" if i else "")))
+        bulunan = akakce_coz(sayfa_getir_guclu(url + (f"?p={i + 1}" if i else "")))
         if not bulunan:
             if i == 0:
                 raise ValueError("Sayfada ürün bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
@@ -1546,7 +1933,7 @@ def dhforum_coz(h):
 def dhforum_cek(sayfa_sayisi=DHFORUM_SAYFA):
     tum, gorulen = [], set()
     for i in range(sayfa_sayisi):
-        bulunan = dhforum_coz(sayfa_getir(DHFORUM_URL + (f"?sayfa={i + 1}" if i else "")))
+        bulunan = dhforum_coz(sayfa_getir_guclu(DHFORUM_URL + (f"?sayfa={i + 1}" if i else "")))
         if not bulunan and i == 0:
             raise ValueError("Forumda fiyatlı konu bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
         for k in bulunan:
@@ -1558,11 +1945,122 @@ def dhforum_cek(sayfa_sayisi=DHFORUM_SAYFA):
     return tum
 
 
+def rss_coz(metin):
+    """RSS 2.0 / Atom beslemesi → [{baslik, link, tarih, aciklama}]. DOCTYPE/ENTITY içeren besleme reddedilir
+    (XML genişletme saldırısına karşı)."""
+    if re.search(r"<!DOCTYPE|<!ENTITY", metin[:5000], re.I):
+        raise ValueError("Besleme beklenmeyen biçimde (DOCTYPE)")
+    kok = ET.fromstring(metin.encode("utf-8") if isinstance(metin, str) else metin)
+    ad = lambda e: e.tag.rsplit("}", 1)[-1].lower()
+    ogeler = [e for e in kok.iter() if ad(e) in ("item", "entry")]
+    sonuc = []
+    for e in ogeler:
+        alan = {ad(c): c for c in e}
+        link = (alan.get("link").text or alan.get("link").get("href") or "").strip() if "link" in alan else ""
+        tarih = None
+        for k in ("pubdate", "published", "updated", "date"):
+            if k in alan and (alan[k].text or "").strip():
+                t = alan[k].text.strip()
+                try:
+                    tarih = parsedate_to_datetime(t)
+                except (TypeError, ValueError, IndexError):
+                    tarih = zaman(t.replace("Z", "+00:00"))
+                break
+        aciklama = ""
+        for k in ("encoded", "description", "summary", "content"):
+            if k in alan and alan[k].text:
+                aciklama = alan[k].text
+                break
+        sonuc.append({"baslik": html_metne(alan["title"].text or "").replace("\n", " ").strip() if "title" in alan else "",
+                      "link": link, "tarih": tarih, "aciklama": aciklama})
+    return sonuc
+
+
+def dh_rss_cek():
+    """DonanımHaber Sıcak Fırsatlar RSS'i. Her konudan mağaza bağlantısı (varsa) çıkarılır: doğrulayıcı onu açar."""
+    hatalar = []
+    for adres in DH_RSS_ADRESLERI:
+        s = magaza_sayfasi_getir(adres, zaman_asimi=20, tarayici=False)
+        if s["durum"] != "ok":
+            hatalar.append(f"RSS {s['durum']} ({s.get('kod') or s.get('hata') or ''})")
+            continue
+        try:
+            ogeler = rss_coz(s["html"])
+        except (ET.ParseError, ValueError) as e:
+            hatalar.append("RSS okunamadı: " + str(e)[:60])
+            continue
+        konular, gorulen = [], set()
+        for o in ogeler:
+            m = re.search(r"--(\d{5,})", o["link"]) or re.search(r"(\d{6,})", o["link"])
+            if not m or len(o["baslik"]) < 6:
+                continue
+            no = int(m.group(1))
+            if no in gorulen:
+                continue
+            gorulen.add(no)
+            magaza_link = None
+            for l in re.findall(r'href="(https?://[^"]+)"', html.unescape(o["aciklama"] or "")):
+                if magaza_alani(l):
+                    magaza_link = l
+                    break
+            konular.append({"no": no, "baslik": o["baslik"], "link": o["link"], "magaza_link": magaza_link,
+                            "tarih": o["tarih"]})
+        if konular:
+            return konular
+        hatalar.append("RSS boş")
+    raise ValueError("; ".join(hatalar) or "RSS adresi yok")
+
+
+def dh_cek():
+    """Önce RSS, olmazsa forum sayfası. Hangisinden okunduğu kaynak notuna yazılır."""
+    try:
+        return dh_rss_cek(), None
+    except Exception as e:
+        rss_hata = hata_metni(e)
+    return dhforum_cek(), f"RSS kullanılamadı, forum sayfası okundu ({rss_hata})"
+
+
 def dhforum_gonderi(k, tarih):
-    g = gonderi_olustur(DHFORUM, k["no"], k["baslik"], [], None, tarih, None)
-    g.update(urun_link=k["link"], metin=k["baslik"] + "\n\nDonanımHaber forumunda paylaşılan fırsat; ürün bağlantısı ve "
-             "kullanıcı yorumları konunun içinde. Yorumlarda fiyatın hâlâ geçerli olup olmadığına bakın.")
+    tarih = k.get("tarih") or tarih
+    linkler = [k["magaza_link"]] if k.get("magaza_link") else []
+    g = gonderi_olustur(DHFORUM, k["no"], k["baslik"], linkler, None, tarih, None)
+    g["forum_link"] = k["link"]
+    if not k.get("magaza_link"):
+        g["urun_link"] = k["link"]
+    g["metin"] = k["baslik"] + "\n\nDonanımHaber’de paylaşılan fırsat" + \
+        ("; ürün bağlantısı konudan alındı, fiyat mağazada doğrulanır." if k.get("magaza_link") else
+         "; ürün bağlantısı ve kullanıcı yorumları konunun içinde. Yorumlarda fiyatın hâlâ geçerli olup olmadığına bakın.")
     return g
+
+
+def akakce_karsilastir(baslik, fiyat, gtin=None):
+    """Ürünü Akakçe aramasında bulur, en ucuz satıcı fiyatını döndürür. Emin olunamazsa None (yanlış eşleşme yerine hiç).
+    Eşleşme: başlıktaki model kodu Akakçe adında geçmeli; model kodu yoksa kelime benzerliği ≥ %60."""
+    if not baslik or not fiyat:
+        return None
+    sorgu = arama_sorgusu(baslik)
+    s = magaza_sayfasi_getir("https://www.akakce.com/arama/?q=" + urllib.parse.quote(sorgu), tarayici=False)
+    if s["durum"] != "ok":
+        return {"durum": s["durum"], "ts": int(time.time())}
+    model = model_kodu(baslik)
+    en, en_puan = None, 0
+    for u in akakce_coz(s["html"])[:15]:
+        if not 0.4 <= u["fiyat"] / fiyat <= 2.5:      # aksesuar / farklı paket gibi alakasız sonuçlar
+            continue
+        ad_ = (u["ad"] or "").upper().replace(" ", "")
+        if model and model.replace("-", "") in ad_.replace("-", ""):
+            puan = 2 + _benzerlik(baslik, u["ad"])
+        elif not model and _benzerlik(baslik, u["ad"]) >= 0.6:
+            puan = _benzerlik(baslik, u["ad"])
+        else:
+            continue
+        if puan > en_puan:
+            en, en_puan = u, puan
+    if not en:
+        return {"durum": "bulunamadi", "sorgu": sorgu, "ts": int(time.time())}
+    fark = round((fiyat - en["fiyat"]) / en["fiyat"] * 100, 1)
+    return {"durum": "ok", "en_ucuz": en["fiyat"], "ad": en["ad"], "link": en["link"], "fark": fark,
+            "eslesme": "model kodu" if en_puan >= 2 else "başlık benzerliği", "ts": int(time.time())}
 
 
 def oyun_cek():
@@ -1614,6 +2112,24 @@ def hata_metni(e):
 # Veri deposu
 # ---------------------------------------------------------------------------
 
+KORUNAN_ALANLAR = ("dogrulama", "akakce_dogrulama", "magaza_basligi", "gtin")
+
+
+def zayif_baslik(b):
+    return len(b or "") < 12 or (b or "").startswith("(") or not re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]{3}", b or "")
+
+
+def zenginlestirmeyi_koru(g, eski):
+    """Kaynak yeniden okunduğunda paylaşım baştan oluşturulur; doğrulayıcının eklediği bilgiler kaybolmasın."""
+    for k in KORUNAN_ALANLAR:
+        if eski.get(k) and not g.get(k):
+            g[k] = eski[k]
+    if eski.get("resim") and not g.get("resim"):
+        g["resim"] = eski["resim"]
+    if g.get("magaza_basligi") and zayif_baslik(g.get("baslik")):
+        g["baslik"] = g["magaza_basligi"]
+
+
 def json_oku(yol, varsayilan):
     try:
         with open(yol, encoding="utf-8") as f:
@@ -1663,8 +2179,14 @@ class Depo:
         self.veri["canli"] = v.get("canli") or {}
         self.veri["canli_son"] = {k: x for k, x in (v.get("canli_son") or {}).items()
                                   if time.time() - x.get("ts", 0) < 6 * 3600 and x.get("surum") == SURUM}
-        self.canli_engel, self.canli_son_istek = {}, {}
+        self.veri["kuyruk"] = v.get("kuyruk") or {}              # Aşama 2'yi bekleyen ürünler: id -> {t, n, s}
+        self.veri["engel"] = {k: t for k, t in (v.get("engel") or {}).items() if time.time() - t < ENGEL_BEKLE_SN}
+        self.veri["akakce_dogrulama"] = {k: x for k, x in (v.get("akakce_dogrulama") or {}).items()
+                                         if time.time() - x.get("ts", 0) < AKAKCE_ONBELLEK_SN}
+        self.canli_son_istek = {}
         self.canli_kilit = threading.Lock()
+        self.dogrulama_tetik = threading.Event()
+        self.dogrulama_kilit = threading.Lock()
         self._eski_kayitlari_yeniden_coz()
 
     def _eski_kayitlari_yeniden_coz(self):
@@ -1726,6 +2248,8 @@ class Depo:
                             eski = self.veri["gonderiler"].get(g["id"])
                             if eski is None:
                                 yeni_idler.append(g["id"])
+                            else:
+                                zenginlestirmeyi_koru(g, eski)
                             self.veri["gonderiler"][g["id"]] = g
                         self.veri["kaynaklar"][kanal] = {"ok": True, "ad": ad, "adet": len(gonderiler),
                                                          "zaman": zaman_s, "hata": None}
@@ -1735,8 +2259,10 @@ class Depo:
                         self.veri["kaynaklar"][kanal] = {"ok": False, "ad": onceki.get("ad"), "adet": 0,
                                                          "zaman": zaman_s, "hata": hata_metni(e)}
                 time.sleep(0.8)
-            self._dis_kaynaklari_yenile()
+            yeni_idler += self._dis_kaynaklari_yenile()
             with self.kilit:
+                self._kuyruga_al(yeni_idler)
+                self._bayatlari_kuyruga_al()
                 self._gecmisi_guncelle()
                 self._temizle()
                 self.veri["son_guncelleme"] = simdi().isoformat()
@@ -1747,7 +2273,11 @@ class Depo:
         finally:
             with self.kilit:
                 self.yenileniyor = False
-        yeni_idler += self._takipleri_ara()
+        self.dogrulama_tetik.set()             # Aşama 2 (doğrulayıcı) yeni kuyruğu işlemeye başlasın
+        takip_yeni = self._takipleri_ara()
+        with self.kilit:
+            self._kuyruga_al(takip_yeni)
+        yeni_idler += takip_yeni
         self._takibimi_guncelle()
         self._bildir(set(yeni_idler), ilk_calisma)
         self._kacirilmazlari_dogrula()
@@ -1759,14 +2289,18 @@ class Depo:
         """Bir dış kaynağın son okumasını kaydeder. Artık listede olmayan kayıtlar kaldırılır
         (tut(g) True dönenler hariç: ör. okunamayan bir Akakçe listesinden gelenler). Bildirim gönderilmez."""
         zaman_s = simdi().isoformat()
+        ilk_kez = []
         with self.kilit:
             gon = self.veri["gonderiler"]
             if gonderiler is not None:
                 yeni = set()
                 for g in gonderiler:
                     eski = gon.get(g["id"])
-                    if eski:   # ilk görüldüğü zaman korunur
+                    if eski:   # ilk görüldüğü zaman ve doğrulama sonucu korunur
                         g["tarih"], g["ts"] = eski["tarih"], eski["ts"]
+                        zenginlestirmeyi_koru(g, eski)
+                    else:
+                        ilk_kez.append(g["id"])
                     gon[g["id"]] = g
                     yeni.add(g["id"])
                 for gid in [k for k, v in gon.items() if v.get("kanal") == kanal and k not in yeni and not tut(v)]:
@@ -1775,8 +2309,11 @@ class Depo:
             self.veri["kaynaklar"][kanal] = {"ok": gonderiler is not None, "ad": DIS_KAYNAKLAR[kanal],
                                              "adet": ok_adet if gonderiler is not None else onceki.get("adet", 0) if hata is None else 0,
                                              "zaman": zaman_s, "hata": hata}
+        return ilk_kez
 
     def _dis_kaynaklari_yenile(self):
+        """Akakçe listeleri, DonanımHaber, oyun indirimleri. İlk kez görülen paylaşımların id'lerini döndürür."""
+        yeni = []
         if self.ayarlar.get("akakce", True):
             bulunan, hatalar, okunan = {}, [], set()
             for kisa, url, ad, sayfa in AKAKCE_LISTELERI:
@@ -1796,14 +2333,185 @@ class Depo:
                                      tut=lambda g: bool(set(g.get("akakce_listeler") or []) - okunan))
             else:
                 self._dis_kaynak_yaz(AKAKCE, None, 0, "; ".join(hatalar))
-        for kanal, ayar, cek, yap in ((DHFORUM, "dhforum", dhforum_cek, dhforum_gonderi), (OYUN, "oyun", oyun_cek, oyun_gonderi)):
-            if not self.ayarlar.get(ayar, VARSAYILAN_AYARLAR.get(ayar, True)):
-                continue
+        if self.ayarlar.get("dhforum", VARSAYILAN_AYARLAR["dhforum"]):
             try:
-                gl = [yap(x, simdi()) for x in cek()]
-                self._dis_kaynak_yaz(kanal, gl, len(gl), None)
+                konular, not_ = dh_cek()
+                gl = [dhforum_gonderi(x, simdi()) for x in konular]
+                yeni += self._dis_kaynak_yaz(DHFORUM, gl, len(gl), not_)
+                if not_:   # forum yedeğiyle okunduysa kaynak "tamam" ama notu görünsün
+                    self.veri["kaynaklar"][DHFORUM]["ok"] = True
             except Exception as e:
-                self._dis_kaynak_yaz(kanal, None, 0, hata_metni(e))
+                self._dis_kaynak_yaz(DHFORUM, None, 0, hata_metni(e))
+        if self.ayarlar.get("oyun", True):
+            try:
+                gl = [oyun_gonderi(x, simdi()) for x in oyun_cek()]
+                self._dis_kaynak_yaz(OYUN, gl, len(gl), None)
+            except Exception as e:
+                self._dis_kaynak_yaz(OYUN, None, 0, hata_metni(e))
+        return yeni
+
+    # --- Aşama 2: doğrulayıcı ve zenginleştirici ----------------------------
+    # Aşama 1 (yenile) kanallardan ve dış kaynaklardan gelen ürünleri kuyruğa yazar. Doğrulayıcı kuyruktaki
+    # her ürünün mağaza sayfasını açar: ad, anlık fiyat, görsel ve stok teyit edilir; fiyat tutmuyorsa ya da
+    # stok bittiyse ürün "red" olur ve listeden çıkar. Okunamayan mağaza ürünü listeden atmaz, "doğrulanamadı" der.
+    def _dogrulanabilir(self, g):
+        link = g.get("urun_link") or ""
+        return bool(g.get("tur") == "urun" and g.get("fiyat") and link and guvenli_dis_adres(link)
+                    and g.get("kanal") not in (AKAKCE, OYUN, TAKIBIM)
+                    and "donanimhaber.com" not in (urllib.parse.urlparse(link).hostname or "")
+                    and "ikinci_el" not in (g.get("rozetler") or [])
+                    and time.time() - g.get("ts", 0) < DOGRULAMA_YAS_SN)
+
+    def _kuyruga_al(self, idler):
+        """(kilit altında çağrılır) Doğrulanabilir yeni ürünleri kuyruğa ekler."""
+        kuyruk, gon = self.veri["kuyruk"], self.veri["gonderiler"]
+        for gid in idler:
+            g = gon.get(gid)
+            if g and gid not in kuyruk and not g.get("dogrulama") and self._dogrulanabilir(g):
+                kuyruk[gid] = {"t": int(time.time()), "n": 0, "s": 0}
+
+    def _bayatlari_kuyruga_al(self, en_fazla=20):
+        """(kilit altında) Kanaldan okunup hiç kuyruğa girmemiş ürünler ile DOGRULAMA_TAZE_SN'den eski
+        onayları yeniden kuyruğa alır: fiyat sonradan yükselmiş ya da stok bitmiş olabilir."""
+        kuyruk, eklenen = self.veri["kuyruk"], 0
+        for g in sorted(self.veri["gonderiler"].values(), key=lambda g: -g.get("ts", 0)):
+            if eklenen >= en_fazla:
+                break
+            if g["id"] in kuyruk or not self._dogrulanabilir(g):
+                continue
+            d = g.get("dogrulama")
+            if d is None or (d.get("durum") in ("onayli", "kosullu") and time.time() - d.get("ts", 0) > DOGRULAMA_TAZE_SN):
+                kuyruk[g["id"]] = {"t": int(time.time()), "n": 0, "s": 0}
+                eklenen += 1
+
+    def _nazik_bekle(self, anahtar, aralik):
+        """Aynı siteye art arda istek atmamak için: son istekten bu yana 'aralik' saniye geçene kadar bekler."""
+        with self.canli_kilit:
+            bekle = self.canli_son_istek.get(anahtar, 0) + aralik - time.time()
+            if bekle > 0:
+                time.sleep(bekle)
+            self.canli_son_istek[anahtar] = time.time()
+
+    def dogrulama_turu(self, sure_sn=None, en_fazla=None):
+        """Kuyruktaki ürünleri sırayla doğrular (yüksek indirimli ve yeni olan önce). İşlenen ürün sayısını döndürür."""
+        if not self.dogrulama_kilit.acquire(blocking=False):
+            return 0                     # başka bir tur zaten çalışıyor
+        bas, islenen = time.time(), 0
+        try:
+            while (not sure_sn or time.time() - bas < sure_sn) and (not en_fazla or islenen < en_fazla):
+                with self.kilit:
+                    kuyruk, gon, an = self.veri["kuyruk"], self.veri["gonderiler"], time.time()
+                    for gid in [i for i, k in kuyruk.items() if i not in gon or not self._dogrulanabilir(gon[i])]:
+                        del kuyruk[gid]
+                    hazir = [i for i, k in kuyruk.items() if k.get("s", 0) <= an]
+                    if not hazir:
+                        break
+                    gid = min(hazir, key=lambda i: (-int(gon[i].get("yuzde") or 0) // 10, -gon[i].get("ts", 0)))
+                    zorla = kuyruk[gid]["n"] > 0 or bool(gon[gid].get("dogrulama"))
+                try:
+                    s_ = self.canli_kontrol(gid, zorla=zorla)
+                except Exception as e:
+                    s_ = {"durum": "hata", "mesaj": hata_metni(e)}
+                if self._dogrulama_isle(gid, s_):
+                    try:
+                        self._akakce_dogrula(gid)
+                    except Exception:
+                        pass
+                islenen += 1
+        finally:
+            self.dogrulama_kilit.release()
+        if islenen:
+            with self.kilit:
+                try:
+                    json_yaz(VERI_DOSYASI, self.veri)
+                except OSError:
+                    pass
+        return islenen
+
+    def _dogrulama_isle(self, gid, s_):
+        """Mağaza okumasının sonucunu ürüne yazar, kuyruğu günceller. Akakçe karşılaştırması gerekiyorsa True."""
+        with self.kilit:
+            g, kuyruk = self.veri["gonderiler"].get(gid), self.veri["kuyruk"]
+            k = kuyruk.get(gid) or {"n": 0}
+            if not g:
+                kuyruk.pop(gid, None)
+                return False
+            durum, an = s_.get("durum"), int(time.time())
+            sonuc = {"ts": an, "motor": s_.get("motor")}
+            yeniden = None
+            if durum == "ok":
+                sonuc["fiyat"] = s_.get("fiyat")
+                if s_.get("stok_yok"):
+                    sonuc.update(durum="red", neden="Mağazada stokta yok")
+                elif s_.get("karar") in ("bitti", "sepet_yok"):
+                    sonuc.update(durum="red", neden=s_.get("metin") or "Mağazadaki fiyat paylaşılanla uyuşmuyor")
+                elif s_.get("karar") == "sepette":
+                    sonuc.update(durum="kosullu", neden=s_.get("metin") or "Fiyat yalnızca sepette/kodla oluşuyor")
+                else:
+                    sonuc.update(durum="onayli", neden=s_.get("metin") or "Fiyat mağazada doğrulandı")
+            elif durum == "stok_yok":
+                sonuc.update(durum="red", neden="Mağazada stokta yok")
+            elif durum == "engellendi":
+                sonuc.update(durum="okunamadi", neden="Mağaza otomatik okumaya izin vermedi")
+            else:
+                sonuc.update(durum="okunamadi", neden=s_.get("mesaj") or "Mağaza sayfası okunamadı")
+                if durum == "hata" and k["n"] + 1 < DOGRULAMA_DENEME:
+                    yeniden = an + 20 * 60 * (k["n"] + 1)        # geçici ağ hatası: 20 / 40 dk sonra yeniden dene
+            g["dogrulama"] = sonuc
+            # Zenginleştirme: mağazadaki ad, görsel ve barkod
+            if s_.get("baslik"):
+                g["magaza_basligi"] = s_["baslik"]
+                if zayif_baslik(g.get("baslik")):
+                    g["baslik"] = s_["baslik"]
+            if s_.get("resim") and not g.get("resim"):
+                g["resim"] = s_["resim"]
+            if s_.get("gtin") and not g.get("gtin"):
+                g["gtin"] = s_["gtin"]
+            if yeniden:
+                kuyruk[gid] = {"t": k.get("t", an), "n": k["n"] + 1, "s": yeniden}
+            else:
+                kuyruk.pop(gid, None)
+            return sonuc["durum"] in ("onayli", "kosullu") and bool(self.ayarlar.get("akakce_dogrula", True))
+
+    def _akakce_dogrula(self, gid):
+        """Doğrulanan ürünü Akakçe'deki en ucuz satıcı fiyatıyla karşılaştırır (ürün başına 12 saat önbellek)."""
+        with self.kilit:
+            g = self.veri["gonderiler"].get(gid)
+            if not g:
+                return
+            anahtar = g.get("gtin") or g.get("anahtar") or gid
+            on = self.veri["akakce_dogrulama"].get(anahtar)
+            fiyat, baslik = g["fiyat"], g.get("magaza_basligi") or g["baslik"]
+        if not on or time.time() - on.get("ts", 0) > AKAKCE_ONBELLEK_SN:
+            self._nazik_bekle("akakce", 2.0)
+            on = akakce_karsilastir(baslik, fiyat, g.get("gtin"))
+            if on is None:
+                return
+        with self.kilit:
+            self.veri["akakce_dogrulama"][anahtar] = on
+            g = self.veri["gonderiler"].get(gid)
+            if g is not None:
+                g["akakce_dogrulama"] = dict(on, fark=round((fiyat - on["en_ucuz"]) / on["en_ucuz"] * 100, 1)) \
+                    if on.get("durum") == "ok" else on
+
+    def dogrulayici_dongu(self):
+        """Yerel modda ayrı iş parçacığı: yenileme bitince (ya da 2 dakikada bir) kuyruğu işler."""
+        while True:
+            self.dogrulama_tetik.wait(timeout=120)
+            self.dogrulama_tetik.clear()
+            try:
+                self.dogrulama_turu()
+            except Exception as e:
+                print("Uyarı: doğrulama turu yarıda kaldı:", hata_metni(e), file=sys.stderr)
+
+    def dogrulama_ozeti(self):
+        say = {"onayli": 0, "kosullu": 0, "red": 0, "okunamadi": 0}
+        for g in self.veri["gonderiler"].values():
+            d = g.get("dogrulama")
+            if d and d.get("durum") in say and time.time() - g.get("ts", 0) < DOGRULAMA_YAS_SN:
+                say[d["durum"]] += 1
+        engelli = sorted(MAGAZA_AD.get(k, k) for k, t in self.veri["engel"].items() if time.time() - t < ENGEL_BEKLE_SN)
+        return dict(say, kuyruk=len(self.veri["kuyruk"]), motorlar=motor_ozeti(), engelli=engelli)
 
     # --- geriye doğru tarama ve arama arşivi ---------------------------------
     def _arsive_ekle(self, liste):
@@ -1918,22 +2626,6 @@ class Depo:
                                  "kf-k-" + re.sub(r"\W", "-", d["id"]))
             with self.kilit:
                 bildirilen[f"k:{d['id']}"] = int(time.time())
-
-    def gorunenleri_dogrula(self, en_fazla=50, sure_sn=120):
-        """(Site üretimi) Son 24 saatteki ürünlerin fiyatını mağazada kontrol eder; süre ve adet sınırlı."""
-        bas = time.time()
-        with self.kilit:
-            tum = self.firsatlar()
-        aday = [d for d in tum if d["tur"] == "urun" and d.get("fiyat") and d.get("urun_link") and not d.get("canli")
-                and not d.get("oto_okunamaz") and time.time() - d["ts"] < 86400 and "ikinci_el" not in d["rozetler"]]
-        aday.sort(key=lambda d: (-(d.get("indirim") or 0) // 10, -d["ts"]))
-        for d in aday[:en_fazla]:
-            if time.time() - bas > sure_sn:
-                break
-            try:
-                self.canli_kontrol(d["id"])
-            except Exception:
-                pass
 
     # --- kanal arşivinden geçmiş fiyat --------------------------------------
     def _arsivi_tamamla(self, adet):
@@ -2192,6 +2884,10 @@ class Depo:
             d["arsiv_arandi"] = bool(g.get("anahtar") and g["anahtar"] in self.veri["arsiv_arama"])
             d["akakce"] = ("https://www.akakce.com/arama/?q=" + urllib.parse.quote(arama_sorgusu(g["baslik"]))) if g.get("fiyat") else None
             cs = self.veri["canli_son"].get(g["id"])
+            d["dogrulama"] = g.get("dogrulama")
+            d["akakce_dogrulama"] = g.get("akakce_dogrulama") if (g.get("akakce_dogrulama") or {}).get("durum") == "ok" else None
+            if (g.get("dogrulama") or {}).get("durum") == "red" and self.ayarlar.get("red_gizle", True):
+                d["bitti"] = True
             d["kosul"] = kosul_metni(g) if g.get("tur") == "urun" else None
             d["canli"] = cs if cs and time.time() - cs.get("ts", 0) < 6 * 3600 else None
             d["cimri"] = ("https://www.cimri.com/arama?q=" + urllib.parse.quote(arama_sorgusu(g["baslik"]))) if g.get("fiyat") else None
@@ -2301,10 +2997,11 @@ class Depo:
                     and "ikinci_el" not in d["rozetler"]:
                 for k in es_anahtarlar(d):
                     kova.setdefault(k, []).append(d)
+        engelli = {k for k, t in self.veri["engel"].items() if time.time() - t < ENGEL_BEKLE_SN}
         for d in sonuc:
             d["urun_gibi"] = d["tur"] in ("kupon", "kampanya") and urun_gibi(d)
             d["teyit"] = kanal_teyidi(d) if d["tur"] == "urun" and d.get("fiyat") else None
-            d["oto_okunamaz"] = d["tur"] == "urun" and d.get("magaza") in OTO_OKUNAMAZ
+            d["oto_okunamaz"] = d["tur"] == "urun" and d.get("magaza") in engelli
             d["kacirilmaz"] = kacirilmaz_bilgisi(d)
             d["magazalar"] = []
             esler, gorulen = [], set()
@@ -2411,6 +3108,7 @@ class Depo:
                 "kaynaklar": kaynaklar,
                 "bildirim_var": bool(shutil.which("termux-notification") or self.ayarlar.get("ntfy_konu")),
                 "termux_bildirim": bool(shutil.which("termux-notification")),
+                "dogrulama": self.dogrulama_ozeti(),
                 "firsatlar": self.firsatlar(),
             }
 
@@ -2427,11 +3125,12 @@ class Depo:
         link = g.get("urun_link") or ""
         # Kısa bağlantılar (indirimbakanligi.com, yakaladin.com…) farklı mağazalara gidebilir; engel kaydı gidilen mağazaya göre tutulur
         alan = magaza_alani(link) or ""
-        # Otomatik kontrolü engelleyen mağazayı 6 saat boyunca tekrar deneme (mağazayı yormamak için)
-        engel = self.canli_engel.get(alan)
-        if alan and engel and time.time() - engel < 6 * 3600:
+        # Otomatik kontrolü engelleyen mağazayı 6 saat boyunca tekrar deneme (mağazayı yormamak için).
+        # Kayıt veri dosyasında tutulur: GitHub'da her 5 dakikalık çalıştırma da bu kuralı bilir.
+        engel = self.veri["engel"].get(alan)
+        if alan and engel and time.time() - engel < ENGEL_BEKLE_SN:
             return {"durum": "engellendi", "mesaj": "Bu mağaza otomatik kontrole izin vermiyor; fiyatı mağazada açarak görün.",
-                    "ts": int(time.time())}
+                    "ts": int(time.time()), "onbellek_engel": True}
         # Aynı mağazaya en fazla 1,5 saniyede bir istek
         with self.canli_kilit:
             anahtar_ = alan or (urllib.parse.urlparse(link).hostname or "")
@@ -2443,7 +3142,8 @@ class Depo:
         s_["ts"], s_["surum"] = int(time.time()), SURUM
         if s_["durum"] == "engellendi":
             son = s_.get("son_url") or link
-            self.canli_engel[magaza_alani(son) or (urllib.parse.urlparse(son).hostname or "")] = time.time()
+            with self.kilit:
+                self.veri["engel"][magaza_alani(son) or (urllib.parse.urlparse(son).hostname or "")] = time.time()
         if s_["durum"] == "ok":
             s_.update(canli_karar(g, s_["fiyat"], gk, s_))
             with self.kilit:
@@ -2608,8 +3308,9 @@ class Depo:
             for k in DIS_KAYNAKLAR:
                 if k in yeni:
                     a[k] = bool(yeni[k])
-            if "gecmis_tamamla" in yeni:
-                a["gecmis_tamamla"] = bool(yeni["gecmis_tamamla"])
+            for k in ("gecmis_tamamla", "akakce_dogrula", "red_gizle"):
+                if k in yeni:
+                    a[k] = bool(yeni[k])
             if "ntfy_konu" in yeni:
                 k = str(yeni["ntfy_konu"] or "").strip()
                 if k and not NTFY_KONU_RE.match(k):
@@ -2895,6 +3596,8 @@ def tek_sefer():
     depo = Depo()
     print("Kanallar okunuyor:", ", ".join(depo.ayarlar["kanallar"]))
     depo.yenile()
+    print("Mağazada doğrulanıyor (en fazla 3 dk)...")
+    depo.dogrulama_turu(sure_sn=180)
     for k in depo.durum()["kaynaklar"]:
         print(f"  {'✓' if k['ok'] else '✗'} {k['ad']}: {k['adet']} paylaşım" + (f" — {k['hata']}" if k["hata"] else ""))
     liste = [d for d in depo.firsatlar() if d["tur"] == "urun"]
@@ -2982,9 +3685,14 @@ def statik_site(cikis):
     if konu and NTFY_KONU_RE.match(konu):
         depo.ayarlar["ntfy_konu"] = konu
     depo.yenile()
-    depo.gorunenleri_dogrula()
+    # Aşama 2: kuyruğu süre sınırıyla işle (GitHub işi 25 dakikada kesilir; site yine de yayınlansın)
+    n = depo.dogrulama_turu(sure_sn=int(os.environ.get("KF_DOGRULAMA_SN", "300")))
     with depo.kilit:
         d = depo.durum()
+    oz = d["dogrulama"]
+    print(f"  doğrulama · {n} ürün işlendi · onaylı {oz['onayli']} · koşullu {oz['kosullu']} · red {oz['red']} · "
+          f"okunamadı {oz['okunamadi']} · kuyrukta {oz['kuyruk']} · motor {'+'.join(oz['motorlar'])}"
+          + (f" · engelleyen: {', '.join(oz['engelli'])}" if oz["engelli"] else ""))
     d["statik"] = True
     # Günlükte hangi mağazanın fiyatının okunabildiği görünsün (sorun teşhisi için)
     say = {}
@@ -3073,7 +3781,10 @@ def main():
         ip = yerel_ag_adresi()
         Isleyici.ag_adresi = f"http://{ip}:{a.port}/?k={Isleyici.anahtar}" if ip else None
     threading.Thread(target=depo.dongu, daemon=True).start()
+    threading.Thread(target=depo.dogrulayici_dongu, daemon=True).start()   # Aşama 2: doğrulayıcı
     print(f"Kasım Fırsatları {SURUM} çalışıyor → {url}")
+    print(f"Mağaza okuma: {' → '.join(motor_ozeti())}" + ("" if _cffi else
+          "  (daha iyi sonuç için: pip install curl_cffi)"))
     print(f"Kanallar: {', '.join(depo.ayarlar['kanallar'])} · her {depo.ayarlar['aralik_dk']} dk yenilenir")
     if a.ag:
         if Isleyici.ag_adresi:
@@ -3659,6 +4370,13 @@ function kart(x){
   else if (x.otuz_gun_ustunde) rozet.push(`<span class="rozet r-sari">Son 30 günde ${tl(x.otuz_gun_ustunde)} görüldü, bu daha pahalı</span>`);
   if (x.eski_fiyat_supheli) rozet.push(`<span class="rozet r-sari" title="Üstü çizili ${tl(x.eski_fiyat_supheli.eski)} son 60 günde hiç görülmedi; en yüksek görülen ${tl(x.eski_fiyat_supheli.gorulen)}">⚠️ Eski fiyat şişirilmiş görünüyor · gerçek indirim ~%${Math.round(x.eski_fiyat_supheli.gercek_yuzde)}</span>`);
   if (x.kanal === TAKIBIM) rozet.push(`<span class="rozet r-mavi">📌 Kendi eklediğim ürün</span>`);
+  const dg = x.dogrulama;
+  if (dg && dg.durum === "onayli" && !bittiMi(x)) rozet.push(`<span class="rozet r-yesil" title="${esc(dg.neden || "")}">✔ Mağazada doğrulandı · ${new Date(dg.ts * 1000).toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit"})}</span>`);
+  else if (dg && dg.durum === "red") rozet.push(`<span class="rozet r-kirmizi" title="${esc(dg.neden || "")}">✖ ${esc((dg.neden || "Fırsat bitmiş").slice(0, 70))}</span>`);
+  const akd = x.akakce_dogrulama;
+  if (akd && !bittiMi(x)) rozet.push(akd.fark <= 1
+    ? `<span class="rozet r-dusus" title="Akakçe: ${esc(akd.ad || "")} · eşleşme: ${esc(akd.eslesme || "")}">⚖️ Akakçe’deki en ucuz fiyat seviyesinde</span>`
+    : `<span class="rozet r-sari" title="Akakçe: ${esc(akd.ad || "")} · eşleşme: ${esc(akd.eslesme || "")}">⚖️ Akakçe’de ${tl(akd.en_ucuz)} satan var (%${Math.round(akd.fark)} daha ucuz)</span>`);
   x.rozetler.filter(r => ROZET[r] && r !== "kupon" && !(r === "sepette" && fiyatNot)).forEach(r => rozet.push(`<span class="rozet ${ROZET[r][1]}">${ROZET[r][0]}</span>`));
   if (x.xaly && !String(x.indirim_kaynak || "").startsWith(x.xaly)) rozet.push(`<span class="rozet r-mavi">${esc(x.xaly)}</span>`);
   if (yas > 3 * 24 * SAAT) rozet.push(`<span class="rozet r-kirmizi">⚠️ ${tarihKisa(x.ts)} tarihli fiyat · bugün geçerli olmayabilir</span>`);
@@ -4074,7 +4792,8 @@ function ayarCiz(){
     ${sayi("bildirim_esik","Bildirim eşiği (%)",10,95, v.bildirim_var ? "Bu oran ve üstündeki yeni fırsatlarda telefona bildirim gönderilir." : "Bildirim şu an kapalı; yukarıdaki “Telefona bildirim” bölümünden açın.")}
     ${sayi("saklama_gun","Paylaşımları sakla (gün)",1,30,"Fiyat geçmişi ayrıca 1 yıl tutulur.")}
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="kupon_ara" ${a.kupon_ara !== false ? "checked" : ""}> Her kanalda “kupon” ve “kod” araması da yap</label>
-    ${[["akakce","Akakçe listeleri (fark atan, son 6 ayın en ucuzu, broşür)"],["dhforum","DonanımHaber Sıcak Fırsatlar forumu"],["oyun","Steam / Epic / GOG oyun indirimleri (%50+)"]].map(([id, et]) => { const b = v.kaynaklar.find(x => x.kanal === id); const d = b && b.ok != null ? ` <small>(${b.ok ? b.adet + " okundu" : "Hata: " + esc(b.hata)})</small>` : (b && b.hata ? ` <small>(Hata: ${esc(b.hata)})</small>` : ""); return `<label class="anahtar" style="margin-top:10px"><input type="checkbox" class="dis-kaynak" id="${id}" ${a[id] !== false ? "checked" : ""}> ${et}${d}</label>`; }).join("")}
+    ${[["akakce","Akakçe listeleri (fark atan, son 6 ayın en ucuzu, broşür)"],["dhforum","DonanımHaber Sıcak Fırsatlar forumu"],["oyun","Steam / Epic / GOG oyun indirimleri (%50+)"],["akakce_dogrula","Doğrulanan ürünü Akakçe’deki en ucuz fiyatla karşılaştır"],["red_gizle","Mağazada fiyatı yükselmiş ya da stoğu bitmiş ürünleri listeden çıkar"]].map(([id, et]) => { const b = v.kaynaklar.find(x => x.kanal === id); const d = b && b.ok != null ? ` <small>(${b.ok ? b.adet + " okundu" : "Hata: " + esc(b.hata)})</small>` : (b && b.hata ? ` <small>(Hata: ${esc(b.hata)})</small>` : ""); return `<label class="anahtar" style="margin-top:10px"><input type="checkbox" class="dis-kaynak" id="${id}" ${a[id] !== false ? "checked" : ""}> ${et}${d}</label>`; }).join("")}
+    ${v.dogrulama ? `<div class="ipucu" style="margin-top:8px">Mağaza doğrulaması (son 48 saat): ✔ ${v.dogrulama.onayli} onaylı · ${v.dogrulama.kosullu} koşullu · ✖ ${v.dogrulama.red} elendi · ${v.dogrulama.okunamadi} okunamadı · ${v.dogrulama.kuyruk} sırada. Okuma: ${esc(v.dogrulama.motorlar.join(" → "))}${v.dogrulama.engelli.length ? ` · şu an izin vermeyen: ${esc(v.dogrulama.engelli.join(", "))}` : ""}</div>` : ""}
     <div class="ipucu">Son paylaşımların dışında kalan kupon paylaşımlarını da getirir. Her yenilemede kanal başına 2 sayfa daha okur.</div>
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="gecmis_tamamla" ${a.gecmis_tamamla !== false ? "checked" : ""}> Yeni ürünlerin eski fiyatlarını kanal arşivinde otomatik ara</label>
     <div class="ipucu">Her yenilemede en yeni 5 ürün için kanalların arama sayfasına bakar; “Ucuzlayanlar” sekmesi bu kayıtlarla dolar.</div>

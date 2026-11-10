@@ -1,0 +1,8 @@
+# Program bunlar olmadan da çalışır (yalnızca Python standart kütüphanesi). Kuruluysa kendiliğinden kullanılır.
+
+# Mağaza sayfalarını gerçek Chrome TLS/HTTP2 imzasıyla okur. Windows başlatıcısı ve GitHub Actions otomatik kurmayı dener.
+curl_cffi>=0.7
+
+# Son çare başsız tarayıcı (JavaScript ile oluşan fiyatlar). Ağırdır; yalnızca bilgisayarda ve KF_TARAYICI=1 iken kullanılır.
+# Kurulum:  pip install playwright  &&  python -m playwright install chromium
+# playwright>=1.45

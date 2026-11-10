@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Mağaza okuma motoru (isteğe bağlı, kurulamazsa standart kütüphaneyle devam)
+        run: pip install --quiet --disable-pip-version-check curl_cffi || echo "curl_cffi kurulamadı; urllib ile devam"
       - name: Önceki veriyi (fiyat geçmişi) geri yükle
         uses: actions/cache/restore@v4
         with:

@@ -19,6 +19,14 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":8765 .*LISTENING"') d
   taskkill /PID %%p /F >nul 2>&1
 )
 timeout /t 1 /nobreak >nul
+
+rem Istege bagli: magaza sayfalarini gercek Chrome gibi okuyan curl_cffi. Kurulamazsa program yine calisir.
+%PY% -c "import curl_cffi" >nul 2>nul
+if errorlevel 1 (
+  echo Magaza okuma motoru kuruluyor, bir kereye mahsus...
+  %PY% -m pip install --quiet --disable-pip-version-check curl_cffi >nul 2>&1
+)
+
 echo Kasim Firsatlari baslatiliyor...
 %PY% "%~dp0kasim_firsat.py" --ag
 echo.
