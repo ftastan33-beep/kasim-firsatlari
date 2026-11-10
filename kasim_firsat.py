@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "2.9"
+SURUM = "3.0"
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
 VERI_DOSYASI = os.path.join(VERI_DIZINI, "veri.json")
@@ -56,8 +56,11 @@ ANAHTAR_DOSYASI = os.path.join(VERI_DIZINI, "erisim_anahtari.txt")
 VARSAYILAN_AYARLAR = {
     "kanallar": ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat",
                  "firsatdolu", "indirimalarmi_tr", "amazonindirimtr", "ucuzkenaldim", "firsatzade",
-                 "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra"],
-    "akakce": True,        # Akakçe "Fark Atan Fiyatlar" listesini de oku
+                 "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra",
+                 "indirimseri", "amazonozel", "firsatlarco", "umutlufirsatlar", "yurticifirsat"],
+    "akakce": True,        # Akakçe listelerini de oku (fark atan, son 6 ayın en ucuzu, broşür)
+    "dhforum": True,       # DonanımHaber Sıcak Fırsatlar forumunu da oku
+    "oyun": True,          # Steam / Epic oyun indirimleri (CheapShark)
     "sayfa": 6,            # kanal başına okunacak sayfa (her sayfa ~20 paylaşım)
     "aralik_dk": 5,        # otomatik yenileme aralığı (dakika)
     "bildirim_esik": 40,   # bu yüzde ve üstü yeni fırsatlarda bildirim (Termux:API gerekir)
@@ -73,10 +76,25 @@ COZUCU_SURUM = 4   # okuma kuralları değişince artırılır; kayıtlı payla�
 ESKI_VARSAYILAN_KANALLAR = [   # önceki sürümlerin varsayılan listeleri: hiç değiştirilmediyse yeni listeye geçilir
     ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi"],
     ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat"],
+    ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi", "indirimhaber", "trendyolfirsat",
+     "firsatdolu", "indirimalarmi_tr", "amazonindirimtr", "ucuzkenaldim", "firsatzade",
+     "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra"],
 ]
 AKAKCE = "akakce"          # Akakçe'den gelen ürünlerin "kanal" adı
-AKAKCE_SAYFA = 3           # "Fark Atan Fiyatlar" listesinden okunacak sayfa (~32 ürün/sayfa)
-AKAKCE_URL = "https://www.akakce.com/fark-atan-fiyatlar/"
+AKAKCE_LISTELERI = [       # (kısa ad, adres, görünen ad, okunacak sayfa; ~32 ürün/sayfa)
+    ("fark", "https://www.akakce.com/fark-atan-fiyatlar/", "Fark Atan Fiyatlar", 3),
+    ("dip", "https://www.akakce.com/son-alti-ayin-en-ucuz-fiyatli-urunleri/", "Son 6 Ayın En Ucuzu", 3),
+    ("brosur", "https://www.akakce.com/brosurlerde-en-iyi-fiyatlar/", "Broşürlerdeki Daha Ucuz Fiyatlar", 2),
+]
+DHFORUM = "dhforum"
+DHFORUM_URL = "https://forum.donanimhaber.com/sicak-firsatlar--f193"
+DHFORUM_SAYFA = 3
+OYUN = "oyun"
+OYUN_URL = ("https://www.cheapshark.com/api/1.0/deals?storeID=1,25,7&onSale=1&sortBy=Deal%20Rating"
+            "&pageSize=60&steamRating=70")
+OYUN_MAGAZA = {"1": "Steam", "25": "Epic Games", "7": "GOG"}
+OYUN_EN_AZ_INDIRIM = 50
+DIS_KAYNAKLAR = {AKAKCE: "Akakçe", DHFORUM: "DonanımHaber Forum · Sıcak Fırsatlar", OYUN: "Oyun indirimleri (Steam/Epic/GOG)"}
 NTFY_KONU_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
 AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (5, 360), "bildirim_esik": (10, 95), "saklama_gun": (1, 30)}
 GECMIS_GUN = 60            # "indirim oranı" için bakılan yakın geçmiş (gün)
@@ -1443,7 +1461,8 @@ def akakce_coz(h):
             if t:
                 ad = html.unescape(t.group(1)).strip()
                 break
-        metin = html_metne(bas)
+        metin = html.unescape(re.sub(r"<[^>]+>", " \n ", bas)).replace("\xa0", " ")   # etiketler arası boşluk: sayılar birleşmesin
+        metin = "\n".join(re.sub(r"[ \t]+", " ", x).strip() for x in metin.split("\n") if x.strip())
         if not ad:   # bağlantının kendi yazısı (ör. <a ...><b>Ürün adı</b></a>)
             t = re.match(r"[^>]*>(.*?)</a>", bas, re.S | re.I)
             t = html_metne(t.group(1)) if t else ""
@@ -1452,7 +1471,7 @@ def akakce_coz(h):
         if not ad:
             satir = [x.strip() for x in metin.split("\n") if len(x.strip()) >= 6 and not re.search(r"\d\s*TL|%\s*\d|FİYAT", x)]
             ad = satir[0] if satir else None
-        tutarlar = [tutar(x) for x in re.findall(r"(" + SAYI + r")\s*TL", metin)]
+        tutarlar = [tutar(x) for x in re.findall(r"(?<![\d.,%])(" + SAYI + r")\s*TL", metin)]
         tutarlar = [x for x in tutarlar if x > 0]
         if not ad or not tutarlar:
             continue
@@ -1470,16 +1489,13 @@ def akakce_coz(h):
     return urunler
 
 
-def akakce_cek(sayfa_sayisi=AKAKCE_SAYFA):
-    """Akakçe "Fark Atan Fiyatlar": en ucuz satıcının diğer satıcılardan belirgin ucuz olduğu ürünler.
-    Bu oran bir fiyat düşüşü değil, satıcılar arası farktır; kartta öyle yazılır."""
+def akakce_cek(url, sayfa_sayisi):
     tum, gorulen = [], set()
     for i in range(sayfa_sayisi):
-        url = AKAKCE_URL + (f"?p={i + 1}" if i else "")
-        bulunan = akakce_coz(sayfa_getir(url))
+        bulunan = akakce_coz(sayfa_getir(url + (f"?p={i + 1}" if i else "")))
         if not bulunan:
             if i == 0:
-                raise ValueError("Akakçe sayfasında ürün bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
+                raise ValueError("Sayfada ürün bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
             break
         for u in bulunan:
             if u["uid"] not in gorulen:
@@ -1490,14 +1506,97 @@ def akakce_cek(sayfa_sayisi=AKAKCE_SAYFA):
     return tum
 
 
-def akakce_gonderi(u, tarih):
+def akakce_gonderi(u, listeler, tarih):
+    """listeler: ürünün göründüğü Akakçe listelerinin kısa adları (fark, dip, brosur)."""
     metin = f"{u['ad']}\n{fiyat_yaz(u['fiyat'])}"
     g = gonderi_olustur(AKAKCE, int(u["uid"]), metin, [u["link"]], u["resim"], tarih, None)
+    notlar = []
+    if "dip" in listeler:
+        notlar.append("Akakçe’nin fiyat kaydına göre son 6 ayın en ucuz fiyatında.")
+    if "brosur" in listeler:
+        notlar.append("Market broşürlerindeki fiyattan daha ucuza satılıyor.")
+    if u["yuzde"] and u["fark"]:
+        notlar.append(f"En ucuz satıcı diğerlerinden yaklaşık %{u['yuzde']} ({fiyat_yaz(u['fark'])}) ucuz; bu oran fiyat düşüşü değil, satıcılar arası farktır.")
+    notlar.append("Satıcıyı ve kargo ücretini kontrol edin.")
+    rozetler = [r for r in (g.get("rozetler") or []) if r != "dip"] + (["dip"] if "dip" in listeler else [])
     g.update(baslik=u["ad"], fiyat=u["fiyat"], eski_fiyat=None, yuzde=None, yuzde_varan=False, tur="urun",
-             akakce_fark=u["yuzde"], akakce_fark_tl=u["fark"],
-             metin=(f"Akakçe “Fark Atan Fiyatlar” listesinden. En ucuz satıcı {fiyat_yaz(u['fiyat'])}"
-                    + (f"; diğer satıcılardan yaklaşık %{u['yuzde']} ({fiyat_yaz(u['fark'])}) ucuz." if u["yuzde"] and u["fark"]
-                       else ".") + " Bu oran fiyat düşüşü değil, satıcılar arası farktır; satıcıyı ve kargo ücretini kontrol edin."))
+             akakce_fark=u["yuzde"], akakce_fark_tl=u["fark"], akakce_listeler=sorted(listeler), rozetler=rozetler,
+             metin=f"Akakçe ({', '.join(ad for k, _, ad, _ in AKAKCE_LISTELERI if k in listeler)}). " + " ".join(notlar))
+    return g
+
+
+DH_KONU_RE = re.compile(r'<a\b[^>]*href="(?:https://forum\.donanimhaber\.com)?/([a-z0-9-]+)--(\d{6,})"[^>]*>(.*?)</a>', re.S | re.I)
+
+
+def dhforum_coz(h):
+    """Sıcak Fırsatlar konu listesi: başlığında TL fiyatı geçen konular (ana konular ve sorular hariç)."""
+    konular, gorulen = [], set()
+    for m in DH_KONU_RE.finditer(h):
+        no = int(m.group(2))
+        baslik = html_metne(m.group(3)).replace("\n", " ").strip()
+        if no in gorulen or len(baslik) < 8 or not re.search(r"(?:" + SAYI + r")\s*(?:TL|₺)|₺\s*\d", baslik, re.I):
+            continue
+        if re.search(r"ana konu|\[ana|soru|yardım|tavsiye", baslik, re.I):
+            continue
+        gorulen.add(no)
+        konular.append({"no": no, "baslik": baslik, "link": f"https://forum.donanimhaber.com/{m.group(1)}--{no}"})
+    return konular
+
+
+def dhforum_cek(sayfa_sayisi=DHFORUM_SAYFA):
+    tum, gorulen = [], set()
+    for i in range(sayfa_sayisi):
+        bulunan = dhforum_coz(sayfa_getir(DHFORUM_URL + (f"?sayfa={i + 1}" if i else "")))
+        if not bulunan and i == 0:
+            raise ValueError("Forumda fiyatlı konu bulunamadı (sayfa yapısı değişmiş ya da erişim engellenmiş olabilir)")
+        for k in bulunan:
+            if k["no"] not in gorulen:
+                gorulen.add(k["no"])
+                tum.append(k)
+        if i + 1 < sayfa_sayisi:
+            time.sleep(1.5)
+    return tum
+
+
+def dhforum_gonderi(k, tarih):
+    g = gonderi_olustur(DHFORUM, k["no"], k["baslik"], [], None, tarih, None)
+    g.update(urun_link=k["link"], metin=k["baslik"] + "\n\nDonanımHaber forumunda paylaşılan fırsat; ürün bağlantısı ve "
+             "kullanıcı yorumları konunun içinde. Yorumlarda fiyatın hâlâ geçerli olup olmadığına bakın.")
+    return g
+
+
+def oyun_cek():
+    istek = urllib.request.Request(OYUN_URL, headers={"User-Agent": "KasimFirsatlari/" + SURUM, "Accept": "application/json"})
+    with urllib.request.urlopen(istek, timeout=25) as yanit:
+        veri = json.loads(yanit.read().decode("utf-8", "replace"))
+    if not isinstance(veri, list):
+        raise ValueError("Oyun servisi beklenmeyen yanıt verdi")
+    sonuc, gorulen = [], set()
+    for d in veri:
+        try:
+            indirim = float(d.get("savings") or 0)
+            satis, normal = float(d["salePrice"]), float(d["normalPrice"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        anahtar = str(d.get("gameID") or d.get("dealID"))
+        if indirim < OYUN_EN_AZ_INDIRIM or not d.get("dealID") or anahtar in gorulen:
+            continue
+        gorulen.add(anahtar)
+        sonuc.append({"no": int(d["gameID"]) if str(d.get("gameID", "")).isdigit() else abs(hash(anahtar)) % 10**9,
+                      "baslik": str(d.get("title") or "").strip()[:150], "satis": satis, "normal": normal,
+                      "indirim": round(indirim), "magaza": OYUN_MAGAZA.get(str(d.get("storeID")), "PC mağazası"),
+                      "link": "https://www.cheapshark.com/redirect?dealID=" + urllib.parse.quote(str(d["dealID"])),
+                      "resim": d.get("thumb") if str(d.get("thumb", "")).startswith("https://") else None})
+    return sonuc
+
+
+def oyun_gonderi(o, tarih):
+    baslik = f"{o['baslik']} — {o['magaza']}’da %{o['indirim']} indirim"
+    g = gonderi_olustur(OYUN, o["no"], baslik, [], o["resim"], tarih, None)
+    g.update(baslik=baslik, tur="kampanya", fiyat=None, eski_fiyat=None, yuzde=float(o["indirim"]), yuzde_varan=False,
+             urun_link=o["link"], kategori="oyun" if "oyun" in KATEGORI_AD else g.get("kategori"),
+             metin=(f"{o['baslik']}: {o['magaza']} ABD fiyatı ${o['satis']:.2f} (normali ${o['normal']:.2f}). "
+                    "Türkiye’deki fiyat farklı olabilir; indirim oranı aynı mağazanın kendi fiyatına göredir. Kaynak: CheapShark."))
     return g
 
 
@@ -1636,8 +1735,7 @@ class Depo:
                         self.veri["kaynaklar"][kanal] = {"ok": False, "ad": onceki.get("ad"), "adet": 0,
                                                          "zaman": zaman_s, "hata": hata_metni(e)}
                 time.sleep(0.8)
-            if self.ayarlar.get("akakce", True):
-                self._akakce_yenile()
+            self._dis_kaynaklari_yenile()
             with self.kilit:
                 self._gecmisi_guncelle()
                 self._temizle()
@@ -1657,29 +1755,55 @@ class Depo:
             self._arsivi_tamamla(ARSIV_OTO_ADET)
         self._geriye_tara()
 
-    def _akakce_yenile(self):
-        """Akakçe listesini okur. Listeden düşen ürünler kaldırılır; ürün ilk görüldüğü zamanla kalır.
-        Bu ürünler için bildirim gönderilmez (fiyat düşüşü değil, satıcılar arası fark)."""
+    def _dis_kaynak_yaz(self, kanal, gonderiler, ok_adet, hata, tut=lambda g: False):
+        """Bir dış kaynağın son okumasını kaydeder. Artık listede olmayan kayıtlar kaldırılır
+        (tut(g) True dönenler hariç: ör. okunamayan bir Akakçe listesinden gelenler). Bildirim gönderilmez."""
         zaman_s = simdi().isoformat()
-        try:
-            urunler = akakce_cek()
-            with self.kilit:
-                gon = self.veri["gonderiler"]
-                yeni_idler = set()
-                for u in urunler:
-                    gid = f"{AKAKCE}/{int(u['uid'])}"
-                    eski = gon.get(gid)
-                    tarih = zaman(eski["tarih"]) if eski else simdi()
-                    gon[gid] = akakce_gonderi(u, tarih)
-                    yeni_idler.add(gid)
-                for gid in [k for k, v in gon.items() if v.get("kanal") == AKAKCE and k not in yeni_idler]:
+        with self.kilit:
+            gon = self.veri["gonderiler"]
+            if gonderiler is not None:
+                yeni = set()
+                for g in gonderiler:
+                    eski = gon.get(g["id"])
+                    if eski:   # ilk görüldüğü zaman korunur
+                        g["tarih"], g["ts"] = eski["tarih"], eski["ts"]
+                    gon[g["id"]] = g
+                    yeni.add(g["id"])
+                for gid in [k for k, v in gon.items() if v.get("kanal") == kanal and k not in yeni and not tut(v)]:
                     del gon[gid]
-                self.veri["kaynaklar"][AKAKCE] = {"ok": True, "ad": "Akakçe · Fark Atan Fiyatlar", "adet": len(urunler),
-                                                  "zaman": zaman_s, "hata": None}
-        except Exception as e:
-            with self.kilit:
-                self.veri["kaynaklar"][AKAKCE] = {"ok": False, "ad": "Akakçe · Fark Atan Fiyatlar", "adet": 0,
-                                                  "zaman": zaman_s, "hata": hata_metni(e)}
+            onceki = self.veri["kaynaklar"].get(kanal) or {}
+            self.veri["kaynaklar"][kanal] = {"ok": gonderiler is not None, "ad": DIS_KAYNAKLAR[kanal],
+                                             "adet": ok_adet if gonderiler is not None else onceki.get("adet", 0) if hata is None else 0,
+                                             "zaman": zaman_s, "hata": hata}
+
+    def _dis_kaynaklari_yenile(self):
+        if self.ayarlar.get("akakce", True):
+            bulunan, hatalar, okunan = {}, [], set()
+            for kisa, url, ad, sayfa in AKAKCE_LISTELERI:
+                try:
+                    for u in akakce_cek(url, sayfa):
+                        b = bulunan.setdefault(u["uid"], {"u": u, "l": set()})
+                        b["l"].add(kisa)
+                        if u.get("fark") and not b["u"].get("fark"):
+                            b["u"] = dict(u, fiyat=b["u"]["fiyat"])
+                    okunan.add(kisa)
+                except Exception as e:
+                    hatalar.append(f"{ad}: {hata_metni(e)}")
+                time.sleep(1)
+            if okunan:
+                gl = [akakce_gonderi(b["u"], b["l"], simdi()) for b in bulunan.values()]
+                self._dis_kaynak_yaz(AKAKCE, gl, len(gl), "; ".join(hatalar) or None,
+                                     tut=lambda g: bool(set(g.get("akakce_listeler") or []) - okunan))
+            else:
+                self._dis_kaynak_yaz(AKAKCE, None, 0, "; ".join(hatalar))
+        for kanal, ayar, cek, yap in ((DHFORUM, "dhforum", dhforum_cek, dhforum_gonderi), (OYUN, "oyun", oyun_cek, oyun_gonderi)):
+            if not self.ayarlar.get(ayar, True):
+                continue
+            try:
+                gl = [yap(x, simdi()) for x in cek()]
+                self._dis_kaynak_yaz(kanal, gl, len(gl), None)
+            except Exception as e:
+                self._dis_kaynak_yaz(kanal, None, 0, hata_metni(e))
 
     # --- geriye doğru tarama ve arama arşivi ---------------------------------
     def _arsive_ekle(self, liste):
@@ -2030,13 +2154,13 @@ class Depo:
         kanallar = {k.lower() for k in self.ayarlar["kanallar"]}
         liste = []
         for g in self.veri["gonderiler"].values():
-            akk = g["kanal"] == AKAKCE
-            if akk and not self.ayarlar.get("akakce", True):
+            akk = g["kanal"] in DIS_KAYNAKLAR
+            if akk and not self.ayarlar.get(g["kanal"], True):
                 continue
             if g["kanal"].lower() not in kanallar and g["kanal"] != TAKIBIM and not akk:
                 continue
             d = {k: v for k, v in g.items() if k not in ("anahtar_eski",)}
-            d["link"] = g.get("urun_link") if g["kanal"] in (TAKIBIM, AKAKCE) else f"https://t.me/{g['id']}"
+            d["link"] = g.get("urun_link") if g["kanal"] == TAKIBIM or akk else f"https://t.me/{g['id']}"
             d["magaza_ad"] = MAGAZA_AD.get(g["magaza"], "Diğer")
             d["rozetler"] = list(g.get("rozetler") or [])
             adaylar = []
@@ -2273,10 +2397,11 @@ class Depo:
                 b = self.veri["kaynaklar"].get(k) or {}
                 kaynaklar.append({"kanal": k, "ad": b.get("ad") or k, "ok": b.get("ok"), "hata": b.get("hata"),
                                   "adet": b.get("adet", 0), "zaman": b.get("zaman")})
-            if self.ayarlar.get("akakce", True):
-                b = self.veri["kaynaklar"].get(AKAKCE) or {}
-                kaynaklar.append({"kanal": AKAKCE, "ad": b.get("ad") or "Akakçe", "ok": b.get("ok"), "hata": b.get("hata"),
-                                  "adet": b.get("adet", 0), "zaman": b.get("zaman"), "dis": True})
+            for k, ad in DIS_KAYNAKLAR.items():
+                if self.ayarlar.get(k, True):
+                    b = self.veri["kaynaklar"].get(k) or {}
+                    kaynaklar.append({"kanal": k, "ad": ad, "ok": b.get("ok"), "hata": b.get("hata"),
+                                      "adet": b.get("adet", 0), "zaman": b.get("zaman"), "dis": True})
             return {
                 "surum": SURUM,
                 "simdi": simdi().isoformat(),
@@ -2480,8 +2605,9 @@ class Depo:
                     a[alan] = v
             if "kupon_ara" in yeni:
                 a["kupon_ara"] = bool(yeni["kupon_ara"])
-            if "akakce" in yeni:
-                a["akakce"] = bool(yeni["akakce"])
+            for k in DIS_KAYNAKLAR:
+                if k in yeni:
+                    a[k] = bool(yeni[k])
             if "gecmis_tamamla" in yeni:
                 a["gecmis_tamamla"] = bool(yeni["gecmis_tamamla"])
             if "ntfy_konu" in yeni:
@@ -2869,6 +2995,8 @@ def statik_site(cikis):
             say[k] = say.get(k, 0) + 1
     for (m, durum), n in sorted(say.items()):
         print(f"  mağaza kontrolü · {m}: {durum} × {n}")
+    for x in d["kaynaklar"]:   # günlükte kaynak durumu (sorun teşhisi için)
+        print(f"  kaynak · {x['kanal']}: {'tamam' if x.get('ok') else 'HATA'} · {x.get('adet', 0)} · {x.get('hata') or ''}")
     d["bildirim_var"] = bool(konu)
     d.pop("ag", None)
     d["ayarlar"] = {k: v for k, v in d["ayarlar"].items() if k not in ("ntfy_konu", "ntfy_sunucu", "alarmlar", "takip")}
@@ -3946,7 +4074,7 @@ function ayarCiz(){
     ${sayi("bildirim_esik","Bildirim eşiği (%)",10,95, v.bildirim_var ? "Bu oran ve üstündeki yeni fırsatlarda telefona bildirim gönderilir." : "Bildirim şu an kapalı; yukarıdaki “Telefona bildirim” bölümünden açın.")}
     ${sayi("saklama_gun","Paylaşımları sakla (gün)",1,30,"Fiyat geçmişi ayrıca 1 yıl tutulur.")}
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="kupon_ara" ${a.kupon_ara !== false ? "checked" : ""}> Her kanalda “kupon” ve “kod” araması da yap</label>
-    <label class="anahtar" style="margin-top:10px"><input type="checkbox" id="akakce" ${a.akakce !== false ? "checked" : ""}> Akakçe “Fark Atan Fiyatlar” listesini de göster ${(() => { const b = v.kaynaklar.find(x => x.kanal === "akakce"); return b && b.ok != null ? `<small>(${b.ok ? b.adet + " ürün okundu" : "Hata: " + esc(b.hata)})</small>` : ""; })()}</label>
+    ${[["akakce","Akakçe listeleri (fark atan, son 6 ayın en ucuzu, broşür)"],["dhforum","DonanımHaber Sıcak Fırsatlar forumu"],["oyun","Steam / Epic / GOG oyun indirimleri (%50+)"]].map(([id, et]) => { const b = v.kaynaklar.find(x => x.kanal === id); const d = b && b.ok != null ? ` <small>(${b.ok ? b.adet + " okundu" : "Hata: " + esc(b.hata)})</small>` : (b && b.hata ? ` <small>(Hata: ${esc(b.hata)})</small>` : ""); return `<label class="anahtar" style="margin-top:10px"><input type="checkbox" class="dis-kaynak" id="${id}" ${a[id] !== false ? "checked" : ""}> ${et}${d}</label>`; }).join("")}
     <div class="ipucu">Son paylaşımların dışında kalan kupon paylaşımlarını da getirir. Her yenilemede kanal başına 2 sayfa daha okur.</div>
     <label class="anahtar" style="margin-top:14px"><input type="checkbox" id="gecmis_tamamla" ${a.gecmis_tamamla !== false ? "checked" : ""}> Yeni ürünlerin eski fiyatlarını kanal arşivinde otomatik ara</label>
     <div class="ipucu">Her yenilemede en yeni 5 ürün için kanalların arama sayfasına bakar; “Ucuzlayanlar” sekmesi bu kayıtlarla dolar.</div>
@@ -4187,7 +4315,7 @@ document.addEventListener("change", e => {
   else if (t.id === "gecmisGizle") { S.f.gecmisGizle = t.checked; sakla(); ciz(); }
   else if (t.id === "sure") { S.f.sure = Object.assign({}, S.f.sure, {[S.sekme]: +t.value}); sakla(); ciz(); }
   else if (t.id === "kupon_ara" && S.ayarTaslak) { S.ayarTaslak.kupon_ara = t.checked; }
-  else if (t.id === "akakce" && S.ayarTaslak) { S.ayarTaslak.akakce = t.checked; }
+  else if (t.classList && t.classList.contains("dis-kaynak") && S.ayarTaslak) { S.ayarTaslak[t.id] = t.checked; }
   else if (t.id === "gecmis_tamamla" && S.ayarTaslak) { S.ayarTaslak.gecmis_tamamla = t.checked; }
   else if (S.ayarTaslak && ["aralik_dk","sayfa","bildirim_esik","saklama_gun"].includes(t.id)) { S.ayarTaslak[t.id] = +t.value; }
 });

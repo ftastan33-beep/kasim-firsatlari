@@ -34,3 +34,14 @@ Bilgisayarda çalıştırmak için: `Kasim-Firsatlari-Baslat.bat` (ayrıntılar 
 - **Akakçe "Fark Atan Fiyatlar"** (ilk 3 sayfa): en ucuz satıcının diğerlerinden belirgin ucuz olduğu ürünler.
   Kartta "⚖️ Akakçe: diğer satıcılardan %X ucuz" yazar; bu oran **fiyat düşüşü değil, satıcılar arası farktır**.
   Bu ürünler için bildirim gönderilmez. Ayarlar'dan kapatılabilir.
+
+## 3.0
+
+- **5 kanal daha** (toplam 19): indirimseri, amazonozel, firsatlarco, umutlufirsatlar, yurticifirsat.
+- **Akakçe listeleri:** "Fark Atan Fiyatlar", "Son 6 Ayın En Ucuzu" (kartta *Dip fiyat* rozeti; Öne çıkanlar'a girer)
+  ve "Broşürlerdeki Daha Ucuz Fiyatlar". Bir liste okunamazsa diğerleri çalışmaya devam eder.
+- **DonanımHaber Sıcak Fırsatlar forumu:** başlığında fiyat geçen konular; kart forum konusuna gider.
+- **Oyun indirimleri (CheapShark):** Steam, Epic ve GOG'da %50+ indirimler, "Kupon & kampanya" sekmesinde.
+  Fiyatlar ABD mağaza fiyatıdır (Türkiye fiyatı farklı olabilir); oran aynı mağazanın kendi fiyatına göredir.
+- Dış kaynaklar için bildirim gönderilmez; her biri Ayarlar'dan ayrı ayrı kapatılabilir. Durumları GitHub
+  Actions günlüğünde "kaynak ·" satırlarında görünür.
