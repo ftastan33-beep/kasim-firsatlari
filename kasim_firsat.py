@@ -59,7 +59,7 @@ VARSAYILAN_AYARLAR = {
                  "gunlukfirsatbulteni", "uygunfiyatdedektifi", "onual_ekstra",
                  "indirimseri", "amazonozel", "firsatlarco", "umutlufirsatlar", "yurticifirsat"],
     "akakce": True,        # Akakçe listelerini de oku (fark atan, son 6 ayın en ucuzu, broşür)
-    "dhforum": True,       # DonanımHaber Sıcak Fırsatlar forumunu da oku
+    "dhforum": False,      # DonanımHaber Sıcak Fırsatlar forumu (GitHub sunucusundan okunamadı; varsayılan kapalı)
     "oyun": True,          # Steam / Epic oyun indirimleri (CheapShark)
     "sayfa": 6,            # kanal başına okunacak sayfa (her sayfa ~20 paylaşım)
     "aralik_dk": 5,        # otomatik yenileme aralığı (dakika)
@@ -1797,7 +1797,7 @@ class Depo:
             else:
                 self._dis_kaynak_yaz(AKAKCE, None, 0, "; ".join(hatalar))
         for kanal, ayar, cek, yap in ((DHFORUM, "dhforum", dhforum_cek, dhforum_gonderi), (OYUN, "oyun", oyun_cek, oyun_gonderi)):
-            if not self.ayarlar.get(ayar, True):
+            if not self.ayarlar.get(ayar, VARSAYILAN_AYARLAR.get(ayar, True)):
                 continue
             try:
                 gl = [yap(x, simdi()) for x in cek()]
@@ -2155,7 +2155,7 @@ class Depo:
         liste = []
         for g in self.veri["gonderiler"].values():
             akk = g["kanal"] in DIS_KAYNAKLAR
-            if akk and not self.ayarlar.get(g["kanal"], True):
+            if akk and not self.ayarlar.get(g["kanal"], VARSAYILAN_AYARLAR.get(g["kanal"], True)):
                 continue
             if g["kanal"].lower() not in kanallar and g["kanal"] != TAKIBIM and not akk:
                 continue
@@ -2398,7 +2398,7 @@ class Depo:
                 kaynaklar.append({"kanal": k, "ad": b.get("ad") or k, "ok": b.get("ok"), "hata": b.get("hata"),
                                   "adet": b.get("adet", 0), "zaman": b.get("zaman")})
             for k, ad in DIS_KAYNAKLAR.items():
-                if self.ayarlar.get(k, True):
+                if self.ayarlar.get(k, VARSAYILAN_AYARLAR.get(k, True)):
                     b = self.veri["kaynaklar"].get(k) or {}
                     kaynaklar.append({"kanal": k, "ad": ad, "ok": b.get("ok"), "hata": b.get("hata"),
                                       "adet": b.get("adet", 0), "zaman": b.get("zaman"), "dis": True})
