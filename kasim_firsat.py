@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "2.6"
+SURUM = "2.7"
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
 VERI_DOSYASI = os.path.join(VERI_DIZINI, "veri.json")
@@ -66,7 +66,7 @@ VARSAYILAN_AYARLAR = {
     "ntfy_sunucu": "https://ntfy.sh",
     "alarmlar": [],        # hedef fiyat alarmları
 }
-COZUCU_SURUM = 3   # okuma kuralları değişince artırılır; kayıtlı paylaşımlar açılışta yeniden okunur
+COZUCU_SURUM = 4   # okuma kuralları değişince artırılır; kayıtlı paylaşımlar açılışta yeniden okunur
 ESKI_VARSAYILAN_KANALLAR = ["dhsicak_firsatlar", "firsatz", "tazefirsat", "indirimbakanligi"]
 NTFY_KONU_RE = re.compile(r"^[A-Za-z0-9_-]{12,64}$")
 AYAR_SINIRLARI = {"sayfa": (1, 10), "aralik_dk": (5, 360), "bildirim_esik": (10, 95), "saklama_gun": (1, 30)}
@@ -395,7 +395,7 @@ BASLIK_ATLA_RE = re.compile(r"yalnızca .{0,60}özel|paylaşılmıştır|sohbet 
 def baslik_bul(satirlar):
     # DH biçimi: ürün satırı 🛒 ile başlar; önce onu dene
     for s in satirlar:
-        if s.strip().startswith("🛒") and not re.search(r"\bgit\b", kucuk(s)):
+        if s.strip().startswith("🛒") and not re.search(r"\bgit\b", kucuk(s)) and not BASLIK_ATLA_RE.search(temizle(s)):
             t = temizle(FIYAT_RE.sub(" ", s))
             if len(re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]", t)) >= 3:
                 return t[:160]
@@ -740,6 +740,25 @@ def kanal_teyidi(d):
             kanallar.add(z["kanal"].lower())
             ilk = min(ilk, z["ts"])
     return {"kanal": len(kanallar), "ilk_ts": ilk}
+
+
+URUN_YOLU_RE = re.compile(r"/dp/|/gp/product/|/gp/aw/d/|-p-\d|-pm-|/urun/|/product/|-p\d")
+GENEL_KAMPANYA_RE = re.compile(r"ürünlerinde|ürünlerde|kategori|alışveriş|sepette|tüm |seçili|markalarda|mağaza|üzeri|"
+                               r"kampanya|indirim kodu|kupon", re.I)
+
+
+def urun_gibi(d):
+    """Kod/kampanya paylaşımı genel bir kampanya değil de tek bir ürünü mü anlatıyor?"""
+    link = d.get("urun_link") or ""
+    alan = (urllib.parse.urlparse(link).hostname or "").lower()
+    yol = urllib.parse.urlparse(link).path.lower()
+    if any(alan.endswith(m) for _, _, alanlar, _ in MAGAZALAR for m in alanlar) and URUN_YOLU_RE.search(yol) \
+            and not re.search(r"/kampanya|/promotion|/magaza/|/butik/|/liste/|/store/", yol):
+        return True
+    baslik = d.get("baslik") or ""
+    for k in d.get("kodlar") or []:
+        baslik = re.sub(re.escape(k), " ", baslik, flags=re.I)
+    return bool(model_kodu(baslik)) and not GENEL_KAMPANYA_RE.search(kucuk(d.get("metin") or baslik))
 
 
 def kacirilmaz_bilgisi(d):
@@ -1741,6 +1760,7 @@ class Depo:
                     and "ikinci_el" not in d["rozetler"]:
                 kova.setdefault(d["model"], []).append(d)
         for d in sonuc:
+            d["urun_gibi"] = d["tur"] in ("kupon", "kampanya") and urun_gibi(d)
             d["teyit"] = kanal_teyidi(d) if d["tur"] == "urun" and d.get("fiyat") else None
             d["oto_okunamaz"] = d["tur"] == "urun" and d.get("magaza") in OTO_OKUNAMAZ
             d["kacirilmaz"] = kacirilmaz_bilgisi(d)
@@ -2643,7 +2663,7 @@ const TAKVIM = [
 
 const S = {veri:null, sekme:"one", limit:60, f:{ara:"", magaza:"hepsi", min:0, ikinciEl:true, sirala:"indirim", kategori:"hepsi", sure:{one:72, ucuz:72, tum:72, kupon:72, takip:0}, sureSurum:2, kuponTur:"hepsi", gecmisGizle:true}, zamanlayici:null, ayarTaslak:null};
 try {
-  const k = JSON.parse(localStorage.getItem("kf-filtre") || "null"); if (k) { const sure = Object.assign({}, S.f.sure, k.sureSurum === 2 ? (k.sure || {}) : {}); k.sureSurum = 2; Object.assign(S.f, k); S.f.sure = sure; }
+  const k = JSON.parse(localStorage.getItem("kf-filtre") || "null"); if (k) { const sure = Object.assign({}, S.f.sure, k.sureSurum === 2 ? (k.sure || {}) : {}); k.sureSurum = 2; Object.assign(S.f, k); S.f.sure = sure; if (!["hepsi", "kod", "kampanya"].includes(S.f.kuponTur)) S.f.kuponTur = "hepsi"; }
   const s = localStorage.getItem("kf-sekme"); if (s && SEKMELER.some(x => x[0] === s)) S.sekme = s;
 } catch (e) {}
 function sakla(){ try { localStorage.setItem("kf-filtre", JSON.stringify(S.f)); localStorage.setItem("kf-sekme", S.sekme); } catch (e) {} }
@@ -2700,7 +2720,7 @@ function sekmeVerisi(sekme){
   if (sekme === "one") return d.filter(x => x.tur === "urun" && !bittiMi(x) && !(dogrulanamadi(x) && Date.now() / 1000 - x.ts > 86400) && ((x.indirim || 0) >= 25 || x.rozetler.includes("dip") || x.rozetler.includes("kayit_dusuk")));
   if (sekme === "ucuz") return d.filter(x => x.tur === "urun" && x.fiyat_ozet && (x.fiyat_ozet.dusus_son >= 3 || x.fiyat_ozet.dusus_ort >= 5));
   if (sekme === "tum") return d.filter(x => x.tur === "urun");
-  if (sekme === "kupon") return d.filter(x => x.tur === "kupon" || x.tur === "kampanya" || (x.kodlar && x.kodlar.length));
+  if (sekme === "kupon") return d.filter(x => (x.tur === "kupon" || x.tur === "kampanya") && !x.urun_gibi);
   if (sekme === "takip") return d.filter(x => x.takip && x.takip.length);
   return [];
 }
@@ -2763,7 +2783,6 @@ function filtreUygula(d){
   if (sure > 0) { const sinir = Date.now() / 1000 - sure * SAAT; d = d.filter(x => x.ts >= sinir); }
   if (S.sekme === "kupon" && !arama) {
     if (f.kuponTur === "kod") d = d.filter(x => x.tur === "kupon");
-    else if (f.kuponTur === "urun") d = d.filter(x => x.tur === "urun");
     else if (f.kuponTur === "kampanya") d = d.filter(x => x.tur === "kampanya");
     if (f.gecmisGizle) d = d.filter(x => !suresiGecti(x));
   }
@@ -3218,7 +3237,7 @@ function listeCiz(){
           ? `<label class="anahtar"><input type="checkbox" id="gecmisGizle" ${S.f.gecmisGizle ? "checked" : ""}> Süresi geçenleri gizle</label>`
           : `<label class="anahtar"><input type="checkbox" id="ikinciEl" ${S.f.ikinciEl ? "checked" : ""}> 2. el ürünler</label>`}
       </div>`}
-      ${S.sekme === "kupon" && !arama ? `<div class="cipler">${[["hepsi","Hepsi"],["kod","Kupon kodları"],["urun","Kodlu ürünler"],["kampanya","Kampanyalar"]].map(([v,a]) => `<button type="button" class="cip" data-kupontur="${v}" aria-pressed="${S.f.kuponTur === v}">${a}</button>`).join("")}</div>` : ""}
+      ${S.sekme === "kupon" && !arama ? `<div class="cipler">${[["hepsi","Hepsi"],["kod","Kupon kodları"],["kampanya","Kampanyalar"]].map(([v,a]) => `<button type="button" class="cip" data-kupontur="${v}" aria-pressed="${S.f.kuponTur === v}">${a}</button>`).join("")}</div>` : ""}
     </div>${arama ? aramaBas : not}${govde}`;
 }
 
