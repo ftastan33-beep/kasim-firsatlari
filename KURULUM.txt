@@ -1,0 +1,88 @@
+KASIM FIRSATLARI — KURULUM
+==========================
+
+Program iki şekilde çalışır. Bilgisayarda çalıştırmak en kolayıdır; telefondan
+aynı Wi-Fi üzerinden açılır.
+
+Bu klasördeki dosyalar:
+  kasim_firsat.py                 -> programın kendisi
+  Kasim-Firsatlari-Baslat.bat     -> Windows'ta çift tıklayıp başlatma
+  kur.sh                          -> Android (Termux) kurulumu
+  KURULUM.txt                     -> bu açıklama
+
+
+A) BİLGİSAYARDA ÇALIŞTIR, TELEFONDAN AÇ (Windows) — önerilen
+-----------------------------------------------------------------
+1) Bu klasörü bilgisayarda kalıcı bir yere koyun (ör. Belgeler\KasimFirsatlari).
+   kasim_firsat.py ile Kasim-Firsatlari-Baslat.bat aynı klasörde olmalı.
+
+2) Kasim-Firsatlari-Baslat.bat dosyasına çift tıklayın.
+   - Python kurulu değilse pencere bunu söyler ve python.org indirme sayfasını açar.
+     Kurulumun ilk ekranında "Add python.exe to PATH" kutusunu işaretleyip
+     "Install Now" deyin, bitince .bat dosyasına tekrar çift tıklayın.
+   - "Windows bilgisayarınız korundu" uyarısı çıkarsa: "Ek bilgi" > "Yine de çalıştır".
+
+3) Windows Güvenlik Duvarı "Python'un bazı özellikleri engellendi" diye sorarsa
+   "Özel ağlar" kutusu işaretliyken "Erişime izin ver"e tıklayın.
+   (Telefonun bağlanabilmesi için gerekli.)
+
+4) Tarayıcıda program açılır. Sağ üstteki "Telefonda aç" düğmesine basın.
+   Çıkan QR kodu telefonun kamerasıyla okutun. Telefon aynı Wi-Fi'de olmalı.
+
+5) Telefonda açılan sayfada tarayıcı menüsü (⋮) > "Ana ekrana ekle".
+   Artık ana ekrandan "Fırsatlar" simgesiyle açılır.
+   Bildirim ve hedef fiyat alarmı için aşağıdaki C bölümüne bakın.
+
+Önemli:
+  - Telefon yalnızca bilgisayar açıkken ve siyah program penceresi açıkken bağlanır.
+    Pencereyi kapatmak programı durdurur.
+  - Telefon açılmıyorsa: Ayarlar > Ağ ve İnternet > Wi-Fi > (ağınız) >
+    "Ağ profili türü" = "Özel" olmalı. "Ortak" ise telefon bağlanamaz.
+  - Bilgisayar açılınca kendiliğinden başlasın isterseniz:
+    Windows + R > shell:startup yazın > Enter. Açılan klasöre
+    Kasim-Firsatlari-Baslat.bat dosyasının KISAYOLUNU koyun
+    (dosyaya sağ tık > Kısayol oluştur, sonra kısayolu oraya taşıyın).
+
+
+C) TELEFONA BİLDİRİM VE HEDEF FİYAT ALARMI
+------------------------------------------
+Telefona bildirim (program bilgisayarda çalışırken de gelir):
+1) Programda Ayarlar > "Telefona bildirimi aç" düğmesine basın.
+   Ekranda "kasim-..." ile başlayan bir konu adı çıkar.
+2) Telefona ücretsiz "ntfy" uygulamasını kurun (Google Play'de "ntfy" ya da F-Droid).
+   Hesap açmanız gerekmez.
+3) ntfy'de sağ alttaki + düğmesi > "Konu adı" kutusuna programdaki konu adını
+   aynen yazın > "Abone ol".
+4) Programda "Deneme bildirimi gönder"e basın. Birkaç saniye içinde telefonunuzda
+   bildirim görünmelidir.
+   - Gelmezse: konu adını harfi harfine kontrol edin; ntfy uygulamasının bildirim
+     izni açık olmalı (Telefon Ayarları > Uygulamalar > ntfy > Bildirimler).
+Not: Bildirimler ntfy.sh sunucusundan geçer. Konu adı şifre gibidir, paylaşmayın.
+
+Hedef fiyat alarmı:
+- Bir ürün kartında "🎯 Hedef fiyat"a basın, istediğiniz fiyatı yazıp "Alarm kur" deyin.
+- Kanallar aynı ürünü o fiyata ya da altına paylaşınca kart işaretlenir ve
+  telefona bildirim gelir. Alarmlar "Takibim" sekmesinde listelenir.
+- Program yalnızca kanallarda paylaşılan fiyatları görür; mağazanın sitesini
+  kendisi taramaz. Ürün hiç paylaşılmazsa alarm çalmaz.
+
+Uygulama simgesi:
+- Telefonda tarayıcı menüsü (⋮) > "Ana ekrana ekle" dediğinizde "Fırsatlar" adıyla
+  turuncu etiket simgesi oluşur.
+
+
+B) YALNIZCA TELEFONDA ÇALIŞTIR (Android, Termux)
+------------------------------------------------
+1) kasim_firsat.py ve kur.sh dosyalarını telefonun "İndirilenler" klasörüne koyun.
+2) F-Droid'den "Termux"u kurun: https://f-droid.org/packages/com.termux/
+3) Termux'ta sırayla:
+     termux-setup-storage          (açılan pencerede İzin ver)
+     bash ~/storage/downloads/kur.sh
+4) Sonraki açılışlarda Termux'ta sadece:  firsat
+
+
+SORUN ÇIKARSA
+  - Telefonda "Bu sayfa için erişim anahtarı gerekiyor": QR kodu yeniden okutun.
+  - Telefonda sayfa hiç açılmıyor: bilgisayar ve telefon aynı Wi-Fi'de mi,
+    ağ profili "Özel" mi, güvenlik duvarında Python'a izin verildi mi?
+  - Kaynaklarda kırmızı nokta: İnternet bağlantısını kontrol edin, "Yenile"ye basın.

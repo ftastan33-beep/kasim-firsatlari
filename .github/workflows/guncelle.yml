@@ -1,0 +1,54 @@
+name: Fırsatları güncelle
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"     # her 30 dakikada bir (GitHub bazen birkaç dakika geciktirir)
+  workflow_dispatch:            # Actions sekmesinden elle de çalıştırılabilir
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  guncelle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.yayin.outputs.page_url }}
+    env:
+      KASIM_FIRSAT_DIZIN: ${{ github.workspace }}/.veri
+      NTFY_KONU: ${{ secrets.NTFY_KONU }}
+      TZ: Europe/Istanbul
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Önceki veriyi (fiyat geçmişi) geri yükle
+        uses: actions/cache/restore@v4
+        with:
+          path: .veri
+          key: veri-${{ github.run_id }}
+          restore-keys: veri-
+      - name: Kanalları oku ve siteyi üret
+        run: python kasim_firsat.py --statik _site
+      - name: Veriyi sakla
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .veri
+          key: veri-${{ github.run_id }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: yayin
+        uses: actions/deploy-pages@v4
