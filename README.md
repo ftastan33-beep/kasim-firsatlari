@@ -89,3 +89,12 @@ Site GitHub Pages'te ücretsiz yayınlanır ve telefona uygulama olarak (PWA) ku
 - **Telegram:** isteğe bağlı; yeni fırsatlar kanala otomatik paylaşılır.
 
 Kurulum: `YAYIN-KURULUM.txt` → `Yayin-Kur.bat`. Komutlar: `--yayin-kur`, `--yayin-onizle KLASOR`, `--yayin-simdi`.
+
+## 3.2.1 — Yanlış ürün eşleşmesi düzeltmesi
+
+- **Model/varyant/hafıza ayrımı:** "Galaxy S26 FE 256 GB" artık "Galaxy S26", "S26 Ultra", "S25 FE" ya da
+  "S26 FE 128 GB" ile aynı ürün sayılmaz (önceden başlık kelimelerinin çoğu ortak olduğu için eşleşiyordu).
+  Akakçe karşılaştırması, fiyat geçmişi, alarm ve "aynı ürün başka mağazada" eşleşmeleri bu kuralı kullanır.
+- **Bağlantı başka ürüne gidiyorsa:** doğrulayıcı ve "kontrol et" mağaza sayfasındaki ürün adını başlıkla karşılaştırır;
+  farklı modelse kart "❌ Bağlantı başka bir ürüne gidiyor" olarak işaretlenir, o ürünün görseli/barkodu karta yazılmaz.
+- Eski sürümün yanlış eşleştirdiği Akakçe kayıtları ve fiyat geçmişi girdileri otomatik ayıklanır.

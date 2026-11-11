@@ -51,7 +51,7 @@ from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.2"
+SURUM = "3.2.1"
 GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
@@ -725,6 +725,47 @@ def anlamli_kelimeler(baslik):
     return [k for k in re.findall(r"[a-z0-9]+", sade(baslik)) if len(k) >= 2]
 
 
+VARYANT_KELIMELER = frozenset({"fe", "ultra", "plus", "pro", "max", "mini", "lite", "se", "edge", "neo", "slim", "air",
+                               "fold", "flip", "xl", "xr", "xs"})
+_KIMLIK_BIRIM = r"(?:gb|tb|mb)"
+_KIMLIK_DISLA_RE = re.compile(r"^(?:[45]g|wifi\d*|usb\d*|ip6\d|\d+(?:mah|hz|w|mm|cm|ml|lt?|kg|gr?|k|p|x|v|a|adet|li|lu|inc|inch))$")
+
+
+@functools.lru_cache(maxsize=8192)
+def urun_kimligi(baslik):
+    """Başlıktaki ürünü ayırt eden parçalar: seri/model (s26, 17), varyant (fe, ultra, pro…) ve hafıza (256gb, 8gb)."""
+    t = re.sub(r"(?<=[0-9a-z])\+", " plus", sade(baslik or ""))
+    t = re.sub(r"\b(\d+)\s*(" + _KIMLIK_BIRIM + r")\b", r"\1\2", t)
+    seri, varyant, hafiza = set(), set(), set()
+    kelimeler = re.findall(r"[a-z0-9]+", t)
+    for i, k in enumerate(kelimeler):
+        if k in VARYANT_KELIMELER:
+            varyant.add(k)
+        elif re.fullmatch(r"\d+" + _KIMLIK_BIRIM, k):
+            hafiza.add(k)
+        elif _KIMLIK_DISLA_RE.match(k):
+            continue
+        elif re.fullmatch(r"[a-z]{1,3}\d{1,4}[a-z]?", k) or (re.fullmatch(r"\d{1,3}", k) and i > 0 and
+                                                          not re.fullmatch(r"\d+", kelimeler[i - 1])):
+            seri.add(k)
+    return frozenset(seri), frozenset(varyant), frozenset(hafiza)
+
+
+def farkli_varyant(a, b):
+    """İki başlık açıkça farklı ürünü mü anlatıyor? (S26 ↔ S26 FE, S25 FE ↔ S26 FE, 128 GB ↔ 256 GB)
+    Bir başlık diğerinden yalnızca daha ayrıntılıysa (biri hafızayı yazmamış gibi) farklı sayılmaz; varyant kelimesi
+    (FE, Ultra, Pro…) ise birinde olup diğerinde yoksa farklı üründür."""
+    if not a or not b:
+        return False
+    sa, va, ha = urun_kimligi(a)
+    sb, vb, hb = urun_kimligi(b)
+    if va != vb and (sa & sb or not (sa or sb)):
+        return True
+    if (sa - sb) and (sb - sa):
+        return True
+    return bool((ha - hb) and (hb - ha))
+
+
 def ayni_urun(g, h):
     """İki paylaşım aynı ürünü mü anlatıyor? (mağaza kodu, model kodu ya da başlık benzerliği)"""
     ga, ha = (g.get("anahtar") or ""), (h.get("anahtar") or "")
@@ -733,6 +774,9 @@ def ayni_urun(g, h):
     # Barkod (GTIN/EAN) ikisinde de okunduysa kesin cevap: aynıysa aynı ürün, farklıysa farklı ürün
     if g.get("gtin") and h.get("gtin"):
         return g["gtin"] == h["gtin"]
+    # Kelimelerin çoğu ortak olsa da model/varyant/hafıza farklıysa başka üründür (S26 FE ≠ S26 ≠ S25 FE)
+    if farkli_varyant(g.get("baslik"), h.get("baslik")):
+        return False
     model = model_kodu(g["baslik"])
     if model and model in (h["baslik"] + " " + h.get("metin", "")).upper():
         return True
@@ -1478,6 +1522,8 @@ def _fiyatlar_coz(x):
 
 
 def _benzerlik(a, b):
+    if farkli_varyant(a, b):
+        return 0.0
     ka, kb = set(anlamli_kelimeler(a or "")[:12]), set(anlamli_kelimeler(b or "")[:12])
     return len(ka & kb) / len(ka | kb) if ka and kb else 0.0
 
@@ -2047,6 +2093,8 @@ def akakce_karsilastir(baslik, fiyat, gtin=None):
     for u in akakce_coz(s["html"])[:15]:
         if not 0.4 <= u["fiyat"] / fiyat <= 2.5:      # aksesuar / farklı paket gibi alakasız sonuçlar
             continue
+        if farkli_varyant(baslik, u["ad"]):           # S26 FE ararken S26 / S26 Ultra / S25 FE eşleşmesin
+            continue
         ad_ = (u["ad"] or "").upper().replace(" ", "")
         if model and model.replace("-", "") in ad_.replace("-", ""):
             puan = 2 + _benzerlik(baslik, u["ad"])
@@ -2117,6 +2165,15 @@ KORUNAN_ALANLAR = ("dogrulama", "akakce_dogrulama", "magaza_basligi", "gtin")
 
 def zayif_baslik(b):
     return len(b or "") < 12 or (b or "").startswith("(") or not re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]{3}", b or "")
+
+
+def baglanti_farkli_urun(g, s_):
+    """Paylaşımdaki bağlantı başlıkta yazandan farklı bir ürüne gidiyorsa açıklama metni, değilse None.
+    (Ör. başlık "Galaxy S26 FE 256 GB", bağlantı "Galaxy S26 Ultra" sayfasını açıyor.)"""
+    b, mb = g.get("baslik"), (s_ or {}).get("baslik")
+    if not mb or zayif_baslik(b) or g.get("kanal") == TAKIBIM or not farkli_varyant(b, mb):
+        return None
+    return f"Bağlantı başka bir ürüne gidiyor: mağazada “{mb[:120]}” açılıyor. Paylaşılan fiyat bu ürün için geçerli değil."
 
 
 def zenginlestirmeyi_koru(g, eski):
@@ -2440,9 +2497,12 @@ class Depo:
             sonuc = {"ts": an, "motor": s_.get("motor"), "son_url": s_.get("son_url"),
                      "liste_fiyati": s_.get("liste_fiyati")}
             yeniden = None
+            farkli = baglanti_farkli_urun(g, s_)
             if durum == "ok":
                 sonuc["fiyat"] = s_.get("fiyat")
-                if s_.get("stok_yok"):
+                if farkli:
+                    sonuc.update(durum="red", neden=farkli)
+                elif s_.get("stok_yok"):
                     sonuc.update(durum="red", neden="Mağazada stokta yok")
                 elif s_.get("karar") in ("bitti", "sepet_yok"):
                     sonuc.update(durum="red", neden=s_.get("metin") or "Mağazadaki fiyat paylaşılanla uyuşmuyor")
@@ -2460,13 +2520,15 @@ class Depo:
                     yeniden = an + 20 * 60 * (k["n"] + 1)        # geçici ağ hatası: 20 / 40 dk sonra yeniden dene
             g["dogrulama"] = sonuc
             # Zenginleştirme: mağazadaki ad, görsel ve barkod
-            if s_.get("baslik"):
+            if farkli:
+                pass                                   # başka ürünün adı, görseli ve barkodu karta yazılmaz
+            elif s_.get("baslik"):
                 g["magaza_basligi"] = s_["baslik"]
                 if zayif_baslik(g.get("baslik")):
                     g["baslik"] = s_["baslik"]
-            if s_.get("resim") and not g.get("resim"):
+            if s_.get("resim") and not g.get("resim") and not farkli:
                 g["resim"] = s_["resim"]
-            if s_.get("gtin") and not g.get("gtin"):
+            if s_.get("gtin") and not g.get("gtin") and not farkli:
                 g["gtin"] = s_["gtin"]
             if yeniden:
                 kuyruk[gid] = {"t": k.get("t", an), "n": k["n"] + 1, "s": yeniden}
@@ -2483,6 +2545,9 @@ class Depo:
             anahtar = g.get("gtin") or g.get("anahtar") or gid
             on = self.veri["akakce_dogrulama"].get(anahtar)
             fiyat, baslik = g["fiyat"], g.get("magaza_basligi") or g["baslik"]
+        # Eski sürümün yanlış eşleştirdiği kayıt (ör. S26 FE için S26 Ultra) önbellekten kullanılmaz
+        if on and on.get("ad") and farkli_varyant(baslik, on["ad"]):
+            on = None
         if not on or time.time() - on.get("ts", 0) > AKAKCE_ONBELLEK_SN:
             self._nazik_bekle("akakce", 2.0)
             on = akakce_karsilastir(baslik, fiyat, g.get("gtin"))
@@ -2716,8 +2781,18 @@ class Depo:
             g = dict(sorted(g.items(), key=lambda kv: (kv[1].get("kanal") == TAKIBIM, kv[1].get("ts", 0)), reverse=True)[:EN_FAZLA_GONDERI])
         self.veri["gonderiler"] = g
         gsinir = int((simdi() - timedelta(days=ARSIV_GUN)).timestamp())
+        # Fiyat geçmişine yanlışlıkla katılmış başka model/varyant kayıtlarını ayıkla (ör. S26 FE geçmişindeki S26 Ultra)
+        basliklar = {gid: x.get("baslik") for gid, x in g.items()}
+        anahtar_basligi = {}
+        for x in g.values():
+            if x.get("anahtar") and not zayif_baslik(x.get("baslik")):
+                anahtar_basligi.setdefault(x["anahtar"], x["baslik"])
         yeni = {}
         for k, kayitlar in self.veri["gecmis"].items():
+            ref = anahtar_basligi.get(k)
+            if ref:
+                kayitlar = [x for x in kayitlar if not farkli_varyant(
+                    ref, basliklar.get(x[2]) or (self.veri["arama_arsivi"].get(x[2]) or [None, None])[1])]
             kalan = sorted(x for x in kayitlar if x[0] >= gsinir)[-80:]
             if kalan:
                 yeni[k] = kalan
@@ -2886,7 +2961,9 @@ class Depo:
             d["akakce"] = ("https://www.akakce.com/arama/?q=" + urllib.parse.quote(arama_sorgusu(g["baslik"]))) if g.get("fiyat") else None
             cs = self.veri["canli_son"].get(g["id"])
             d["dogrulama"] = g.get("dogrulama")
-            d["akakce_dogrulama"] = g.get("akakce_dogrulama") if (g.get("akakce_dogrulama") or {}).get("durum") == "ok" else None
+            akd = g.get("akakce_dogrulama") or {}
+            d["akakce_dogrulama"] = akd if akd.get("durum") == "ok" and not farkli_varyant(
+                g.get("magaza_basligi") or g["baslik"], akd.get("ad")) else None
             if (g.get("dogrulama") or {}).get("durum") == "red" and self.ayarlar.get("red_gizle", True):
                 d["bitti"] = True
             d["kosul"] = kosul_metni(g) if g.get("tur") == "urun" else None
@@ -3146,7 +3223,10 @@ class Depo:
             son = s_.get("son_url") or link
             with self.kilit:
                 self.veri["engel"][magaza_alani(son) or (urllib.parse.urlparse(son).hostname or "")] = time.time()
-        if s_["durum"] == "ok":
+        farkli = baglanti_farkli_urun(g, s_) if s_["durum"] == "ok" else None
+        if farkli:
+            s_.update(karar="farkli_urun", renk="kirmizi", metin=farkli)
+        elif s_["durum"] == "ok":
             s_.update(canli_karar(g, s_["fiyat"], gk, s_))
             with self.kilit:
                 kayit = self.veri.setdefault("canli", {}).setdefault(g.get("anahtar") or g["id"], [])
@@ -4316,10 +4396,12 @@ function guvenBlok(x){
   const ak = link(x.akakce) ? ` <a href="${esc(x.akakce)}" target="_blank" rel="noopener noreferrer">Akakçe’de bak</a>` : "";
   return `<div class="fdurum ${sinif}">${ikon} ${esc(kim)} · ${sureMetni(yas)} önce paylaşıldı${teyit}. ${esc(sonuc)} Sepetteki tutara bakın.${ak}</div>${altSatir}`;
 }
-function bittiMi(x){ const c = canliSonuc(x); return !!c && ((c.durum === "ok" && (c.karar === "bitti" || c.karar === "sepet_yok")) || c.durum === "stok_yok"); }
+function bittiMi(x){ const c = canliSonuc(x); return !!c && ((c.durum === "ok" && (c.karar === "bitti" || c.karar === "sepet_yok" || c.karar === "farkli_urun")) || c.durum === "stok_yok"); }
 function canliSonuc(x){ const c = (S.canli || {})[x.id] || x.canli; return c && !c.yukleniyor ? c : null; }
 function fiyatBlok(x){
   const c = canliSonuc(x);
+  if (x.fiyat != null && c && c.durum === "ok" && c.karar === "farkli_urun")
+    return `<div class="fiyatlar"><div class="fsatir eski"><span class="fet">Paylaşılan fiyat</span><span class="fdeger"><s>${tl(x.fiyat)}</s></span></div><div class="fdurum c-kirmizi">${esc("❌ " + (c.metin || "Bağlantı başka bir ürüne gidiyor"))}</div></div>`;
   if (x.fiyat != null && c && c.durum === "ok") {
     const saat = new Date(c.ts * 1000).toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit"});
     const sat = [];

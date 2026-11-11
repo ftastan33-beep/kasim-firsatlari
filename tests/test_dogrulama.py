@@ -214,5 +214,33 @@ class Hat(unittest.TestCase):
         self.assertIn("dogrulama", d.durum())
 
 
+
+class FarkliVaryantTesti(unittest.TestCase):
+    """S26 FE ile S26 / S26 Ultra / S25 FE / farklı hafıza aynı ürün sayılmamalı."""
+    B = "Samsung Galaxy S26 FE 256 GB 8 GB Ram (Samsung Türkiye Garantili) Grafit Gri"
+
+    def test_farkli_modeller(self):
+        import kasim_firsat as k
+        for a in ("Samsung Galaxy S26 256 GB 12 GB Ram (Samsung Türkiye Garantili) Siyah",
+                  "Samsung Galaxy S26 Ultra 256 GB", "Samsung Galaxy S26 FE 128 GB 8 GB Ram",
+                  "Samsung Galaxy S25 FE 256 GB 8 GB Ram (Samsung Türkiye Garantili) Lacivert", "Galaxy S26+ 256GB"):
+            self.assertTrue(k.farkli_varyant(self.B, a), a)
+            self.assertFalse(k.ayni_urun({"baslik": self.B}, {"baslik": a}), a)
+            self.assertEqual(k._benzerlik(self.B, a), 0.0, a)
+
+    def test_ayni_urun_farkli_yazim(self):
+        import kasim_firsat as k
+        for a in ("Samsung Galaxy S26 FE", "Samsung S26 FE 256GB Grafit",
+                  "Samsung Galaxy S26 FE 256 GB 8 GB Ram Lacivert"):
+            self.assertFalse(k.farkli_varyant(self.B, a), a)
+        self.assertFalse(k.farkli_varyant("Logitech MX Master 3S Mouse", "Logitech MX Master 3S Kablosuz Mouse Grafit"))
+
+    def test_baglanti_baska_urune_gidiyor(self):
+        import kasim_firsat as k
+        g = {"baslik": self.B, "kanal": "x"}
+        self.assertIsNotNone(k.baglanti_farkli_urun(g, {"baslik": "Samsung Galaxy S26 Ultra 512 GB"}))
+        self.assertIsNone(k.baglanti_farkli_urun(g, {"baslik": "Samsung Galaxy S26 FE 256 GB Grafit"}))
+
+
 if __name__ == "__main__":
     unittest.main()
