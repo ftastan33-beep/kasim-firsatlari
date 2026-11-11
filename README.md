@@ -132,3 +132,14 @@ Her ürün için Market Fiyatı'nın **son 90 günlük fiyat geçmişi** (aynı 
 
 Büyük kutudaki oran kontrol bitince **gerçek oran** olur; marketin ilan ettiği oran ayrıca yazılır. Varsayılan sıralama
 “En yüksek gerçek indirim”. Kontrol ekrandaki ürünler için yapılır (aynı anda 4 istek), sonuçlar oturum boyunca saklanır.
+
+## 3.4 — Fiyat karşılaştırma ve yeni Market görünümü
+
+- **⚖️ Fiyat karşılaştır:** Market sekmesinde ikinci bölüm. Ürün adını yaz (ör. "tiryaki çay 1 kg"); çevredeki BİM, A101, ŞOK,
+  Migros, CarrefourSA, Tarım Kredi ve Hakmar fiyatları yan yana gelir. Her market için en ucuz şube, en ucuza göre
+  "+%X" farkı, en ucuz ile en pahalı arasındaki TL farkı. Sıralama: akıllı, en düşük fiyat, birim fiyat, marketler arası en büyük fark.
+- **İndirim kartlarında "Fiyatları karşılaştır":** indirimdeki ürünün başka marketlerde kaça satıldığını kartın içinde gösterir.
+- **Görünüm** Market Fiyatı'ndan ilham aldı: ızgara kartlar, büyük ürün görseli, mavi ana düğme, marketlerin kendi
+  renklerinde etiketler; telefonda iki sütun.
+- **Market Fiyatı'nı yormama:** aynı anda en çok 2 istek, istekler arası 250 ms; fiyat geçmişi yalnızca ekrandaki ürünler için
+  ve bu cihazda 12 saat saklanır. Bağlantı kesilir ya da çok sık istek uyarısı gelirse 2 dakika istek atılmaz.

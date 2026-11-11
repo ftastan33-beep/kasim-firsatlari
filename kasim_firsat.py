@@ -51,7 +51,7 @@ from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.3"
+SURUM = "3.4"
 GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
@@ -2158,7 +2158,7 @@ def akakce_karsilastir(baslik, fiyat, gtin=None):
 
 
 MARKET_API = "https://api.marketfiyati.org.tr/api/"
-MARKET_YOLLAR = ("v2/nearest", "v3/searchByCategories", "v3/price-history")   # yalnızca bu iki uç noktaya aracılık edilir
+MARKET_YOLLAR = ("v2/nearest", "v2/search", "v3/searchByCategories", "v3/price-history")   # yalnızca bu iki uç noktaya aracılık edilir
 
 
 def market_istegi(yol, govde):
@@ -2167,7 +2167,7 @@ def market_istegi(yol, govde):
     if yol not in MARKET_YOLLAR or not isinstance(govde, dict):
         raise ValueError("Geçersiz market isteği")
     izinli = {"latitude", "longitude", "distance", "pages", "size", "depots", "offer_discount", "menu_category",
-              "main_category", "market_names", "uniqueId"}
+              "main_category", "market_names", "uniqueId", "keywords"}
     temiz = {k: v for k, v in govde.items() if k in izinli}
     if "size" in temiz:
         temiz["size"] = max(1, min(int(temiz["size"]), 25))
@@ -4247,6 +4247,71 @@ details.metin div{white-space:pre-wrap;margin-top:6px;color:var(--soluk);overflo
 .bilgi li{margin-bottom:4px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--metin);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13.5px;font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.goster{opacity:1}
+
+/* Market sekmesi — Market Fiyatı'ndan ilham: beyaz kartlar, büyük görsel, mavi ana düğme, market renkleri */
+.mf{--mf-mavi:#1681ff}
+.mf-mod{display:flex;gap:4px;background:var(--yuzey2);padding:4px;border-radius:12px;margin-bottom:10px}
+.mf-mod button{flex:1;border:0;background:transparent;padding:10px 8px;border-radius:9px;font-weight:700;font-size:14.5px;color:var(--soluk)}
+.mf-mod button[aria-pressed=true]{background:var(--yuzey);color:var(--mf-mavi);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.mf-konum{display:flex;gap:6px;margin-bottom:10px}
+.mf-konum select{flex:1;min-width:0}
+.mf-ara{display:flex;gap:6px;margin-bottom:10px}
+.mf-ara input{flex:1;min-width:0;font-size:16px;padding:12px 14px;border-radius:10px;border:1.5px solid var(--cizgi);background:var(--yuzey);color:var(--metin)}
+.mf-ara input:focus{outline:none;border-color:var(--mf-mavi)}
+.mf-arac{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--soluk)}
+.mf-izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.mf-kart{background:var(--yuzey);border:1px solid var(--cizgi);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s}
+.mf-kart:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.mf-kart.acik{grid-column:1/-1}
+.mf-kart.soluk{opacity:.7}
+.mf-ust{display:flex;flex-direction:column;gap:10px}
+.mf-kart.acik .mf-ust{flex-direction:row}
+.mf-kart.acik .mf-gorsel{width:140px;flex:none}
+.mf-gorsel{position:relative;background:#fff;border-radius:8px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.mf-gorsel img{width:86%;height:86%;object-fit:contain}
+.mf-oran{position:absolute;top:6px;left:6px;background:#e31e24;color:#fff;border-radius:8px;padding:4px 7px 3px;font-weight:800;font-size:16px;line-height:1;text-align:center}
+.mf-oran small{display:block;font-size:9.5px;font-weight:600;opacity:.95}
+.mf-oran.orta{background:#f59e0b}
+.mf-bilgiler{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+.mf-ad{font-weight:600;font-size:14.5px;line-height:1.3;color:var(--metin);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
+.mf-zs{display:flex;align-items:center;gap:6px;min-width:0}
+.mf-zs small{font-size:12px;color:var(--soluk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zchip{display:inline-block;flex:none;font-weight:800;font-size:11.5px;line-height:1;padding:4px 7px;border-radius:5px;letter-spacing:.02em;vertical-align:middle}
+.cip .zchip{font-size:11px;padding:3px 6px}
+.mf-fiyat{font-size:21px;font-weight:800;color:var(--metin);letter-spacing:-.01em}
+.mf-fiyat s{font-size:13px;font-weight:500;color:var(--soluk);margin-left:7px}
+.mf-fiyat .mf-aralik{font-size:13px;font-weight:600;color:var(--soluk);margin-left:5px}
+.mf-birim{font-size:12px;color:var(--soluk)}
+.mf .rozetler{margin-top:2px}
+.mf-eylem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+.mf-btn{background:var(--mf-mavi);color:#fff;border:0;border-radius:8px;padding:9px 12px;font-weight:700;font-size:13.5px;cursor:pointer}
+.mf-btn:hover{filter:brightness(1.07)}
+.mf-btn[aria-expanded=true]{background:var(--yuzey2);color:var(--metin)}
+.mf-link{font-size:12.5px;color:var(--mf-mavi);text-decoration:none}
+.mf-tablo{border:1px solid var(--cizgi);border-radius:10px;overflow:hidden}
+.mf-tablo-ust{font-weight:700;font-size:13px;padding:9px 12px;background:var(--yuzey2)}
+.mf-satir{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid var(--cizgi)}
+.mf-satir.ucuz{background:rgba(22,163,74,.07)}
+.mf-satir.bu{box-shadow:inset 3px 0 0 var(--mf-mavi)}
+.mf-z{display:flex;flex-direction:column;gap:4px;min-width:0}
+.mf-z small{font-size:11.5px;color:var(--soluk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mf-f{display:flex;flex-direction:column;line-height:1.2}
+.mf-f b{font-size:17px;font-weight:800;color:var(--metin)}
+.mf-f s{font-size:11.5px;color:var(--soluk)}
+.mf-f small{font-size:11.5px;color:var(--soluk)}
+.mf-e{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.mf-ucuz{background:#16a34a;color:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:3px 7px}
+.mf-pahali{background:#8b9096;color:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:3px 7px}
+.mf-ind{font-size:10.5px;color:#e31e24;font-weight:700}
+.mf-ozet{font-size:12.5px;color:var(--soluk);padding:9px 12px;border-top:1px solid var(--cizgi)}
+.mf-bilgi{font-size:13px;color:var(--soluk);background:var(--yuzey2);border-radius:8px;padding:10px 12px}
+.mf-bos{text-align:center;color:var(--soluk);padding:34px 12px;line-height:1.6;background:var(--yuzey);border:1px dashed var(--cizgi);border-radius:14px}
+.mf-bos b{color:var(--metin);font-size:16px}
+.mf-bos-ikon{font-size:38px;margin-bottom:6px}
+.mf-oneri{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px}
+@media (max-width:520px){.mf-izgara{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.mf-kart{padding:9px}.mf-fiyat{font-size:18px}
+  .mf-kart.acik .mf-ust{flex-direction:column}.mf-kart.acik .mf-gorsel{width:100%;max-width:220px;align-self:center}
+  .mf-eylem .mf-btn{width:100%}.mf-satir{grid-template-columns:minmax(0,1fr) auto;}.mf-e{grid-column:2;grid-row:1/3}}
 </style>
 </head>
 <body>
@@ -5078,11 +5143,11 @@ const ILLER = [[1,"Adana",37.0000,35.3213],[2,"Adıyaman",37.7648,38.2786],[3,"A
 const M_KATEGORI = [["Meyve ve Sebze","Meyve & sebze"],["Et, Tavuk ve Balık","Et, tavuk & balık"],["Süt Ürünleri ve Kahvaltılık","Süt & kahvaltılık"],["Temel Gıda","Temel gıda"],["İçecek","İçecek"],["Atıştırmalık ve Tatlı","Atıştırmalık & tatlı"],["Temizlik Ürünleri","Temizlik"],["Kişisel Bakım","Kişisel bakım"],["Diğer Ürünler","Diğer"]];
 const M_ZINCIR = {migros:"Migros", carrefour:"CarrefourSA", bim:"BİM", a101:"A101", sok:"ŞOK", tarim_kredi:"Tarım Kredi", hakmar:"Hakmar"};
 const M_ONBELLEK_MS = 30 * 60 * 1000;
-S.m = {il:42, yaricap:10, kat:"hepsi", zincir:"hepsi", sirala:"gercek", min:0, ara:"", konum:null, sisikGizle:true};
+S.m = {il:42, yaricap:10, kat:"hepsi", zincir:"hepsi", sirala:"gercek", min:0, ara:"", konum:null, sisikGizle:true, mod:"indirim", kq:"", ksirala:"akilli"};
 try { const k = JSON.parse(localStorage.getItem("kf-market") || "null"); if (k) Object.assign(S.m, k); } catch (e) {}
 if (!ILLER.some(x => x[0] === S.m.il)) S.m.il = 42;
 if (S.m.surum !== 2) { S.m.surum = 2; S.m.sirala = "gercek"; if (S.m.sisikGizle == null) S.m.sisikGizle = true; }
-S.mv = {liste:{}, depo:{}, yuk:null, gecmis:{}, kuyruk:[], calisan:0, limit:60};
+S.mv = {liste:{}, depo:{}, yuk:null, gecmis:{}, kuyruk:[], calisan:0, limit:60, kars:{}, acik:{}, ara:null, sonGorunen:null};
 function mSakla(){ try { localStorage.setItem("kf-market", JSON.stringify(S.m)); } catch (e) {} }
 function mKonum(){
   if (S.m.konum) return {lat:S.m.konum.lat, lon:S.m.konum.lon, ad:"Konumum", anahtar:`k${S.m.konum.lat.toFixed(3)},${S.m.konum.lon.toFixed(3)}`};
@@ -5091,12 +5156,41 @@ function mKonum(){
 }
 function mAnahtar(){ const k = mKonum(); return [k.anahtar, S.m.yaricap, S.m.kat, S.m.zincir].join("|"); }
 
+// Market Fiyatı'nı yormamak için: aynı anda en çok 2 istek, istekler arası en az 250 ms; engellenirse 2 dk beklenir.
+const M_SIRA = {aktif:0, bekleyen:[], son:0, durdur:0};
+function mSiraAl(){
+  return new Promise(coz => { M_SIRA.bekleyen.push(coz); mSiraIlerle(); });
+}
+function mSiraIlerle(){
+  if (M_SIRA.aktif >= 2 || !M_SIRA.bekleyen.length) return;
+  const bekle = Math.max(0, M_SIRA.son + 250 - Date.now());
+  if (bekle > 0) { clearTimeout(M_SIRA.z); M_SIRA.z = setTimeout(mSiraIlerle, bekle); return; }
+  M_SIRA.aktif++; M_SIRA.son = Date.now();
+  M_SIRA.bekleyen.shift()();
+  mSiraIlerle();
+}
+function mSiraBirak(){ M_SIRA.aktif--; mSiraIlerle(); }
+function mDurduMu(){ return Date.now() < M_SIRA.durdur; }
 async function mfIstek(yol, govde){
+  if (mDurduMu()) throw new Error("Market Fiyatı çok sık istek nedeniyle kısa süreliğine yanıt vermiyor; " + Math.ceil((M_SIRA.durdur - Date.now()) / 60000) + " dk sonra tekrar deneyin.");
+  await mSiraAl();
+  try { return await mfIstekHam(yol, govde); }
+  catch (e) {
+    // Ağ hatası ya da 429: muhtemelen geçici engel — tüm isteklere 2 dakika ara ver
+    if (!(e && e.name === "AbortError") && /Failed to fetch|NetworkError|429|Load failed/i.test(String(e && e.message || e))) {
+      M_SIRA.durdur = Date.now() + 120000;
+      throw new Error("Market Fiyatı’na ulaşılamadı: internet bağlantısı yok ya da çok sık istek yüzünden geçici olarak bekletiliyor. 2 dakika sonra tekrar deneyin.");
+    }
+    throw e;
+  } finally { mSiraBirak(); }
+}
+async function mfIstekHam(yol, govde){
   // Önce doğrudan (Market Fiyatı herkese açık istek kabul ediyor); olmazsa bilgisayardaki program aracılığıyla.
   const zaman = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
   try {
     const r = await fetch(MF_API + yol, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(govde), signal:zaman(20000)});
     if (r.ok) return await r.json();
+    if (r.status === 429) throw new Error("429 · Market Fiyatı çok sık istek nedeniyle bekletiyor");
     if (r.status >= 400 && r.status < 500) throw new Error("Market Fiyatı isteği kabul etmedi (" + r.status + ")");
   } catch (e) {
     if (S.veri && (S.veri.statik || S.veri.onizleme)) throw e;
@@ -5138,7 +5232,7 @@ async function mYukle(devam){
   if (!devam && L && !L.hata && Date.now() - L.t < M_ONBELLEK_MS) return;
   if (S.mv.yuk === anahtar) return;
   if (!L || !devam) L = S.mv.liste[anahtar] = {t:Date.now(), urunler:[], idler:{}, sayfa:0, toplam:null, zincirSay:null, hata:null};
-  S.mv.yuk = anahtar; L.hata = null; if (S.sekme === "market") marketCiz();
+  S.mv.yuk = anahtar; L.hata = null; if (S.sekme === "market") { try { marketCiz(); } catch (e) { console.error(e); } }
   try {
     const depots = await mDepolar();
     if (!depots.length) throw new Error("Bu konumun " + S.m.yaricap + " km çevresinde kayıtlı market şubesi bulunamadı. Yarıçapı büyütün.");
@@ -5174,7 +5268,6 @@ async function mYukle(devam){
   }
 }
 
-function mSlug(s){ return sadeJS(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
 // --- Gerçek indirim kontrolü: ürünün aynı marketteki son 90 günlük fiyatı (Market Fiyatı fiyat geçmişi) ---
 function mGecmisAnahtar(u){ return u.id + "|" + u.depo; }
 function mGecmisOzet(u, h){
@@ -5201,9 +5294,20 @@ function mKarar(u){
   return Object.assign({}, g, {gercek, karar, eskiSisik: !!(u.eski && u.eski > g.max * 1.02)});
 }
 function mTarih(t){ try { return new Date(t + "T12:00:00").toLocaleDateString("tr-TR", {day:"numeric", month:"long"}); } catch (e) { return t; } }
+// Fiyat geçmişi sonuçları bu cihazda 12 saat saklanır (aynı ürün için tekrar istek atılmaz)
+const M_GECMIS_SURE = 12 * 3600 * 1000;
+try { const k = JSON.parse(localStorage.getItem("kf-mgecmis") || "{}"); const n = Date.now(); for (const [a, v] of Object.entries(k)) if (v && n - v.t < M_GECMIS_SURE) S.mv.gecmis[a] = v; } catch (e) {}
+function mGecmisSakla(){
+  clearTimeout(S.mv.gsZaman);
+  S.mv.gsZaman = setTimeout(() => { try {
+    const n = Date.now(), e = Object.entries(S.mv.gecmis).filter(([, v]) => v && v.t && v.durum !== "hata" && n - v.t < M_GECMIS_SURE).sort((a, b) => b[1].t - a[1].t).slice(0, 1500);
+    localStorage.setItem("kf-mgecmis", JSON.stringify(Object.fromEntries(e)));
+  } catch (x) {} }, 2000);
+}
 function mKuyrugaAl(liste){
-  liste.forEach(u => { const a = mGecmisAnahtar(u); if (u.depo && !S.mv.gecmis[a] && !S.mv.kuyruk.some(x => mGecmisAnahtar(x) === a)) S.mv.kuyruk.push(u); });
-  for (let i = S.mv.calisan; i < 4; i++) mIsci();
+  // Yalnızca ekranda görünen ürünler; sıra her çizimde yenilenir (kaydırılıp geçilenler beklemez)
+  S.mv.kuyruk = liste.filter(u => u.depo && !S.mv.gecmis[mGecmisAnahtar(u)]);
+  if (!S.mv.calisan) mIsci();
 }
 async function mIsci(){
   if (!S.mv.kuyruk.length) return;
@@ -5211,111 +5315,259 @@ async function mIsci(){
   while (S.mv.kuyruk.length) {
     const u = S.mv.kuyruk.shift(), a = mGecmisAnahtar(u);
     if (S.mv.gecmis[a]) continue;
-    try { S.mv.gecmis[a] = mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})); }
-    catch (e) { S.mv.gecmis[a] = {durum:"hata"}; }
+    if (mDurduMu()) break;
+    try { S.mv.gecmis[a] = Object.assign(mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})), {t:Date.now()}); mGecmisSakla(); }
+    catch (e) { if (!mDurduMu()) S.mv.gecmis[a] = {durum:"hata", t:Date.now()}; }
     mCizErtele();
   }
   S.mv.calisan--;
+  if (mDurduMu() && S.mv.kuyruk.length) setTimeout(() => { if (!S.mv.calisan) mIsci(); }, M_SIRA.durdur - Date.now() + 1000);
 }
 function mCizErtele(){ if (S.mv.cizZaman) return; S.mv.cizZaman = setTimeout(() => { S.mv.cizZaman = null; const ae = document.activeElement; if (S.sekme === "market" && !(ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m"))) marketCiz(); }, 500); }
 
 function mSlug(s){ return sadeJS(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
+// Market zincirlerinin kendi renkleri (Market Fiyatı'ndaki gibi); logo yerine renkli ad etiketi kullanılır
+const M_RENK = {sok:["#ffe000","#1d1d1b"], tarim_kredi:["#0c6937","#fff"], carrefour:["#01509d","#fff"], a101:["#2bcae0","#06343b"],
+                migros:["#ee7623","#fff"], bim:["#e31e24","#fff"], hakmar:["#4db848","#fff"]};
+function zEtiket(z){ const r = M_RENK[z] || ["#6b7280","#fff"]; return `<span class="zchip" style="background:${r[0]};color:${r[1]}">${esc(M_ZINCIR[z] || z)}</span>`; }
+function mDetayLink(id, ad){ return `https://marketfiyati.org.tr/detay/${encodeURIComponent(id)}/${mSlug(ad)}`; }
+
+// --- Fiyat karşılaştırma: aynı ürünün çevredeki tüm marketlerdeki fiyatı ---
+function mDepoSatirlari(liste){
+  // Her zincirden en ucuz şube; fiyata göre sıralı
+  const enIyi = {};
+  (liste || []).filter(d => d && d.price != null).forEach(d => { const z = d.marketAdi || "?"; if (!enIyi[z] || d.price < enIyi[z].price) enIyi[z] = d; });
+  return Object.values(enIyi).sort((a, b) => a.price - b.price);
+}
+function mTablo(liste, buZincir){
+  const sat = mDepoSatirlari(liste);
+  if (!sat.length) return `<div class="mf-bilgi">Bu ürün çevrendeki başka markette bulunamadı.</div>`;
+  const min = sat[0].price, max = sat[sat.length - 1].price;
+  const ozet = sat.length < 2
+    ? `Bu ürün çevrende yalnızca ${esc(M_ZINCIR[sat[0].marketAdi] || sat[0].marketAdi)}’de satılıyor.`
+    : max - min < 0.01 ? `${sat.length} markette de aynı fiyat.`
+    : `En ucuz <b>${esc(M_ZINCIR[sat[0].marketAdi] || sat[0].marketAdi)}</b> · en pahalıyla arasında <b>${tl(Math.round((max - min) * 100) / 100)}</b> fark (%${Math.round((max / min - 1) * 100)}).`;
+  return `<div class="mf-tablo">
+    <div class="mf-tablo-ust">⚖️ Fiyat karşılaştırma · ${sat.length} market</div>
+    ${sat.map((d, i) => {
+      const fark = Math.round((d.price / min - 1) * 1000) / 10;
+      const etiket = d.price - min < 0.01 ? `<span class="mf-ucuz">En ucuz</span>` : `<span class="mf-pahali" title="En ucuzdan bu kadar pahalı">+%${fark.toLocaleString("tr-TR")}</span>`;
+      return `<div class="mf-satir${d.price - min < 0.01 ? " ucuz" : ""}${d.marketAdi === buZincir ? " bu" : ""}">
+        <div class="mf-z">${zEtiket(d.marketAdi)}<small>${esc(d.depotName || "")}</small></div>
+        <div class="mf-f"><b>${tl(d.price)}</b>${d.discountlessPrice && d.discountlessPrice > d.price ? `<s>${tl(d.discountlessPrice)}</s>` : ""}<small>${esc(d.unitPrice || "")}</small></div>
+        <div class="mf-e">${etiket}${d.discount ? `<span class="mf-ind">indirimde</span>` : ""}</div>
+      </div>`; }).join("")}
+    <div class="mf-ozet">${ozet}</div>
+  </div>`;
+}
+async function mKarsilastirGetir(u){
+  const a = u.id;
+  if (S.mv.kars[a] && S.mv.kars[a].durum !== "hata") return;
+  S.mv.kars[a] = {durum:"yukleniyor"}; marketCiz();
+  try {
+    const depots = await mDepolar();
+    // Arama, ürünün çevredeki tüm marketlerdeki fiyatlarını döndürür; aynı ürünü kimliğiyle bulunur
+    const r = await mfIstek("v2/search", {keywords:u.ad, pages:0, size:24, depots});
+    const c = (r.content || []).find(x => String(x.id) === u.id);
+    S.mv.kars[a] = c ? {durum:"ok", liste:c.productDepotInfoList || []} : {durum:"yok"};
+  } catch (e) { S.mv.kars[a] = {durum:"hata", hata:String((e && e.message) || e)}; }
+  marketCiz();
+}
+function mKarsBlok(u){
+  const k = S.mv.kars[u.id];
+  if (!k || !S.mv.acik[u.id]) return "";
+  if (k.durum === "yukleniyor") return `<div class="mf-bilgi">Çevredeki marketlerin fiyatları getiriliyor…</div>`;
+  if (k.durum === "hata") return `<div class="mf-bilgi">Karşılaştırma alınamadı: ${esc(k.hata)} <button type="button" class="ikincil" data-mkars="${esc(u.id)}">Tekrar dene</button></div>`;
+  if (k.durum === "yok") return `<div class="mf-bilgi">Bu ürün çevrendeki başka markette bulunamadı.</div>`;
+  return mTablo(k.liste, u.zincir);
+}
+
+// İndirim kartı (Market Fiyatı tarzı ızgara kartı)
 function mKart(u){
   const res = link(u.resim);
   const k = mKarar(u);
   const kontrollu = k.durum === "ok";
   const gosterOran = kontrollu ? Math.max(0, k.gercek) : u.oran;
   const oran = gosterOran != null && !(kontrollu && k.karar === "sisik")
-    ? `<div class="${gosterOran >= 30 ? "oran" : "oran orta"}" title="${kontrollu ? "Son 90 günde çoğunlukla satıldığı fiyata göre" : "Marketin ilan ettiği oran"}">%${gosterOran}<small>${kontrollu ? "gerçek" : "indirim"}</small></div>` : "";
+    ? `<div class="mf-oran${gosterOran >= 30 ? "" : " orta"}" title="${kontrollu ? "Son 90 günde çoğunlukla satıldığı fiyata göre" : "Marketin ilan ettiği oran"}">%${gosterOran}<small>${kontrollu ? "gerçek" : "indirim"}</small></div>` : "";
   const rozet = [];
   if (kontrollu) {
-    if (k.karar === "dip") rozet.push(`<span class="rozet r-yesil">✅ Son ${k.gun} günün en düşük fiyatı · normalde ~${tl(k.medyan)}</span>`);
+    if (k.karar === "dip") rozet.push(`<span class="rozet r-yesil">✅ Son ${k.gun} günün en düşüğü · normalde ~${tl(k.medyan)}</span>`);
     else if (k.karar === "gercek") {
       rozet.push(`<span class="rozet r-yesil">✅ Gerçek indirim · normalde ~${tl(k.medyan)}</span>`);
       rozet.push(`<span class="rozet r-sari">Daha önce ${tl(k.min)}’ye düştü (${esc(mTarih(k.minTarih))})</span>`);
-    } else rozet.push(`<span class="rozet r-kirmizi">⚠️ Şişirilmiş indirim: son ${k.gun} günde çoğunlukla ${tl(k.medyan)}’ye satılmış</span>`);
+    } else rozet.push(`<span class="rozet r-kirmizi">⚠️ Şişirilmiş indirim: son ${k.gun} günde çoğunlukla ${tl(k.medyan)}</span>`);
     if (k.eskiSisik) rozet.push(`<span class="rozet r-sari">Üstü çizili ${tl(u.eski)} son ${k.gun} günde hiç görülmedi</span>`);
     if (u.oran != null && Math.abs(u.oran - k.gercek) >= 3) rozet.push(`<span class="rozet">Marketin ilan ettiği: %${u.oran}</span>`);
-  } else if (k.durum === "bekliyor") rozet.push(`<span class="rozet">⏳ Fiyat geçmişi kontrol ediliyor…</span>`);
-  else if (k.durum === "az") rozet.push(`<span class="rozet r-sari">Fiyat geçmişi yetersiz (yeni ürün) · oranı marketin beyanı</span>`);
-  else rozet.push(`<span class="rozet r-sari">Fiyat geçmişi okunamadı · oranı marketin beyanı</span>`);
+  } else if (k.durum === "bekliyor") rozet.push(mDurduMu() ? `<span class="rozet r-sari">⏸ Fiyat geçmişi birazdan kontrol edilecek</span>` : `<span class="rozet">⏳ Fiyat geçmişi kontrol ediliyor…</span>`);
+  else if (k.durum === "az") rozet.push(`<span class="rozet r-sari">Fiyat geçmişi yetersiz · oran marketin beyanı</span>`);
+  else rozet.push(`<span class="rozet r-sari">Fiyat geçmişi okunamadı · oran marketin beyanı</span>`);
   if (u.promo) rozet.push(`<span class="rozet r-mavi">${esc(u.promo)}</span>`);
-  if ((u.oran || 0) >= 70 && !kontrollu) rozet.push(`<span class="rozet r-kirmizi">🧐 Kontrol et: indirim oranı çok yüksek</span>`);
-  if (u.zaman) rozet.push(`<span class="rozet">Fiyat zamanı: ${esc(u.zaman)}</span>`);
-  return `<article class="kart${kontrollu && k.karar === "sisik" ? " soluk" : ""}">
-    ${res ? `<img class="resim" src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="var d=document.createElement('div');d.className='resim bos';this.replaceWith(d)">` : `<div class="resim bos">${esc(M_ZINCIR[u.zincir] || u.zincir)}</div>`}
-    <div class="govde">
-      <div class="kbas"><div class="kbaslik">${esc(u.ad)}</div>${oran}</div>
-      <div class="fiyat">${tl(u.fiyat)}${u.eski ? `<s>${tl(u.eski)}</s>` : ""}${u.birimFiyat ? ` <small>· ${esc(u.birimFiyat)}</small>` : ""}</div>
-      <div class="meta"><b>${esc(M_ZINCIR[u.zincir] || u.zincir)}</b> · ${esc(u.sube)}</div>
-      <div class="meta">${esc([u.menu, u.ana].filter(Boolean).join(" › "))}</div>
-      ${rozet.length ? `<div class="rozetler">${rozet.join("")}</div>` : ""}
-      <div class="eylem"><a class="ana" href="https://marketfiyati.org.tr/detay/${encodeURIComponent(u.id)}/${mSlug(u.ad)}" target="_blank" rel="noopener noreferrer">Market Fiyatı’nda gör</a></div>
+  if ((u.oran || 0) >= 70 && !kontrollu) rozet.push(`<span class="rozet r-kirmizi">🧐 Kontrol et: oran çok yüksek</span>`);
+  const acik = !!S.mv.acik[u.id];
+  return `<article class="mf-kart${acik ? " acik" : ""}${kontrollu && k.karar === "sisik" ? " soluk" : ""}">
+    <div class="mf-ust">
+      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${oran}</div>
+      <div class="mf-bilgiler">
+        <div class="mf-ad" title="${esc(u.ad)}">${esc(u.ad)}</div>
+        <div class="mf-zs">${zEtiket(u.zincir)}<small>${esc(u.sube)}</small></div>
+        <div class="mf-fiyat">${tl(u.fiyat)}${u.eski ? `<s>${tl(u.eski)}</s>` : ""}</div>
+        <div class="mf-birim">${esc(u.birimFiyat || "")}${u.zaman ? ` · ${esc(u.zaman)}` : ""}</div>
+        <div class="rozetler">${rozet.join("")}</div>
+        <div class="mf-eylem">
+          <button type="button" class="mf-btn" data-mkars="${esc(u.id)}" aria-expanded="${acik}">${acik ? "Karşılaştırmayı kapat" : "⚖️ Fiyatları karşılaştır"}</button>
+          <a class="mf-link" href="${mDetayLink(u.id, u.ad)}" target="_blank" rel="noopener noreferrer">Fiyat geçmişi ↗</a>
+        </div>
+      </div>
     </div>
+    ${mKarsBlok(u)}
   </article>`;
+}
+
+// Arama sonucu kartı: ürünün çevredeki marketlerdeki fiyatları kartın içinde gelir
+function mAraKart(c){
+  const sat = mDepoSatirlari(c.productDepotInfoList);
+  if (!sat.length) return "";
+  const en = sat[0], acik = !!S.mv.acik["a:" + c.id], res = link(c.imageUrl);
+  const enPahali = sat[sat.length - 1].price;
+  return `<article class="mf-kart${acik ? " acik" : ""}">
+    <div class="mf-ust">
+      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${sat.length > 1 && enPahali - en.price >= 0.01 ? `<div class="mf-oran orta" title="En ucuz ile en pahalı market arasındaki fark">%${Math.round((enPahali / en.price - 1) * 100)}<small>fark</small></div>` : ""}</div>
+      <div class="mf-bilgiler">
+        <div class="mf-ad" title="${esc(c.title)}">${esc(c.title)}</div>
+        <div class="mf-zs">${zEtiket(en.marketAdi)}${sat.length > 1 ? `<small>+${sat.length - 1} market</small>` : `<small>${esc(en.depotName || "")}</small>`}</div>
+        <div class="mf-fiyat">${tl(en.price)}${sat.length > 1 && enPahali - en.price >= 0.01 ? `<small class="mf-aralik">– ${tl(enPahali)}</small>` : ""}</div>
+        <div class="mf-birim">${esc(en.unitPrice || "")}${c.menu_category ? ` · ${esc(c.menu_category)}` : ""}</div>
+        <div class="mf-eylem">
+          <button type="button" class="mf-btn" data-maac="${esc(c.id)}" aria-expanded="${acik}">${acik ? "Kapat" : `⚖️ Fiyatları karşılaştır${sat.length > 1 ? ` (${sat.length})` : ""}`}</button>
+          <a class="mf-link" href="${mDetayLink(c.id, c.title)}" target="_blank" rel="noopener noreferrer">Fiyat geçmişi ↗</a>
+        </div>
+      </div>
+    </div>
+    ${acik ? mTablo(c.productDepotInfoList) : ""}
+  </article>`;
+}
+
+async function mAraYukle(devam){
+  const q = S.m.kq.trim();
+  const anahtar = [mKonum().anahtar, S.m.yaricap, q].join("|");
+  if (q.length < 2) { S.mv.ara = null; marketCiz(); return; }
+  let A = S.mv.ara;
+  if (!devam || !A || A.anahtar !== anahtar) A = S.mv.ara = {anahtar, q, sonuclar:[], idler:{}, sayfa:0, toplam:null, yuk:false, hata:null};
+  if (A.yuk) return;
+  A.yuk = true; A.hata = null; marketCiz();
+  try {
+    const depots = await mDepolar();
+    if (!depots.length) throw new Error("Bu konumun " + S.m.yaricap + " km çevresinde kayıtlı market şubesi bulunamadı. Yarıçapı büyütün.");
+    const r = await mfIstek("v2/search", {keywords:q, pages:A.sayfa, size:24, depots});
+    if (S.mv.ara !== A) return;
+    A.toplam = r.numberOfFound || 0; A.sayfa++;
+    (r.content || []).forEach(c => { if (c && !A.idler[c.id] && (c.productDepotInfoList || []).length) { A.idler[c.id] = 1; A.sonuclar.push(c); } });
+  } catch (e) { A.hata = String((e && e.message) || e); }
+  A.yuk = false;
+  if (S.sekme === "market") marketCiz();
 }
 
 function marketCiz(){
   if (S.sekme !== "market") return;
-  const anahtar = mAnahtar(), L = S.mv.liste[anahtar], k = mKonum();
+  const k = mKonum();
+  const ilSecenek = ILLER.map(([no, ad]) => `<option value="${no}" ${!S.m.konum && S.m.il === no ? "selected" : ""}>${String(no).padStart(2, "0")} · ${esc(ad)}</option>`).join("");
+  const ustBar = `
+    <div class="mf-mod" role="tablist">
+      <button type="button" data-mmod="indirim" aria-pressed="${S.m.mod !== "kars"}">🏷️ İndirimler</button>
+      <button type="button" data-mmod="kars" aria-pressed="${S.m.mod === "kars"}">⚖️ Fiyat karşılaştır</button>
+    </div>
+    <div class="mf-konum">
+      <select id="mIl" aria-label="Şehir">${S.m.konum ? `<option value="konum" selected>📍 Konumum</option>` : ""}${ilSecenek}</select>
+      <select id="mYaricap" aria-label="Arama yarıçapı">${[3,5,10,20].map(v => `<option value="${v}" ${S.m.yaricap === v ? "selected" : ""}>${v} km çevre</option>`).join("")}</select>
+      <button type="button" class="ikincil" id="mKonum">📍 Konumum</button>
+    </div>`;
+  const odakId = document.activeElement && ["mAra", "mKq"].includes(document.activeElement.id) ? document.activeElement.id : null;
+  const pos = odakId ? document.activeElement.selectionStart : null;
+  $("#icerik").innerHTML = `<div class="mf">${ustBar}${S.m.mod === "kars" ? mKarsGorunum(k) : mIndirimGorunum(k)}</div>`;
+  if (odakId) { const a = $("#" + odakId); if (a) { a.focus(); try { a.setSelectionRange(pos, pos); } catch (e) {} } }
+  if (S.m.mod !== "kars" && S.mv.sonGorunen) mKuyrugaAl(S.mv.sonGorunen);
+}
+
+function mKarsGorunum(k){
+  const A = S.mv.ara, q = S.m.kq.trim();
+  if (q.length >= 2 && (!A || A.anahtar !== [k.anahtar, S.m.yaricap, q].join("|")) && !(A && A.yuk)) setTimeout(() => mAraYukle(false), 0);
+  let sonuc = (A && A.sonuclar) || [];
+  if (S.m.ksirala === "ucuz") sonuc = sonuc.slice().sort((a, b) => mDepoSatirlari(a.productDepotInfoList)[0].price - mDepoSatirlari(b.productDepotInfoList)[0].price);
+  else if (S.m.ksirala === "birim") sonuc = sonuc.slice().sort((a, b) => (mDepoSatirlari(a.productDepotInfoList)[0].unitPriceValue ?? 1e12) - (mDepoSatirlari(b.productDepotInfoList)[0].unitPriceValue ?? 1e12));
+  else if (S.m.ksirala === "fark") { const f = c => { const s = mDepoSatirlari(c.productDepotInfoList); return s.length > 1 ? s[s.length - 1].price / s[0].price : 1; }; sonuc = sonuc.slice().sort((a, b) => f(b) - f(a)); }
+  let govde;
+  if (q.length < 2) govde = `<div class="mf-bos"><div class="mf-bos-ikon">⚖️</div><b>Hangi ürünün fiyatını karşılaştıralım?</b><br>Ürün adını yaz; ${esc(k.ad)} çevresindeki BİM, A101, ŞOK, Migros, CarrefourSA, Tarım Kredi ve Hakmar fiyatlarını yan yana gösteririm.
+      <div class="mf-oneri">${["çaykur tiryaki 1 kg","ayçiçek yağı 5 lt","toz şeker 5 kg","pınar süt 1 lt","yumurta 30","tuvalet kağıdı 32"].map(x => `<button type="button" class="cip" data-mone="${esc(x)}">${esc(x)}</button>`).join("")}</div></div>`;
+  else if (A && A.hata && !sonuc.length) govde = `<div class="bos-durum">${esc(A.hata)}<br><br><button type="button" class="ikincil" id="mAraYenile">Tekrar dene</button></div>`;
+  else if (!sonuc.length) govde = `<div class="bos-durum">${!A || A.yuk ? "Fiyatlar getiriliyor…" : "Çevrede bu adla ürün bulunamadı. Daha kısa yazmayı deneyin (ör. “tiryaki”)."}</div>`;
+  else govde = `<div class="mf-izgara">${sonuc.map(mAraKart).join("")}</div>`
+    + (A && A.yuk ? `<div class="bos-durum">Yükleniyor…</div>` : A && A.toplam > A.sayfa * 24 ? `<button type="button" class="daha" id="mAraDaha">Daha fazla ürün (${A.toplam - A.sayfa * 24})</button>` : "");
+  return `
+    <form class="mf-ara" id="mKqForm"><input type="search" id="mKq" placeholder="Ürün ara ve karşılaştır (ör. tiryaki çay 1 kg)" value="${esc(S.m.kq)}" autocomplete="off"><button type="submit" class="mf-btn">Ara</button></form>
+    ${sonuc.length ? `<div class="mf-arac"><span>${A.toplam} ürün · ${esc(k.ad)} ${S.m.yaricap} km</span>
+      <select id="mKsirala" aria-label="Sıralama">${[["akilli","Akıllı sıralama"],["ucuz","En düşük fiyat"],["birim","En düşük birim fiyat"],["fark","Marketler arası en büyük fark"]].map(([v,a]) => `<option value="${v}" ${S.m.ksirala === v ? "selected" : ""}>${a}</option>`).join("")}</select></div>` : ""}
+    ${govde}
+    <div class="not" style="margin-top:12px">Kaynak: Market Fiyatı (TÜBİTAK). Her market için çevredeki en ucuz şubesi gösterilir; fiyatlar marketlerin bildirdiği şube fiyatlarıdır, kasada farklı olabilir.</div>`;
+}
+
+function mIndirimGorunum(k){
+  const anahtar = mAnahtar(), L = S.mv.liste[anahtar];
   if (!L || (!L.hata && Date.now() - L.t > M_ONBELLEK_MS && S.mv.yuk !== anahtar)) { setTimeout(() => mYukle(false), 0); }
   const yukleniyor = S.mv.yuk === anahtar;
   let d = L ? L.urunler.slice() : [];
   const q = sadeJS(S.m.ara.trim());
   if (q) d = d.filter(u => sadeJS(u.ad + " " + u.marka + " " + u.ana).includes(q));
-  const ko = u => { const k = mKarar(u); return k.durum === "ok" ? k.gercek : (u.oran || 0); };
+  const ko = u => { const x = mKarar(u); return x.durum === "ok" ? x.gercek : (u.oran || 0); };
   if (S.m.min > 0) d = d.filter(u => ko(u) >= S.m.min);
   const sisikSay = d.filter(u => mKarar(u).karar === "sisik").length;
   if (S.m.sisikGizle) d = d.filter(u => mKarar(u).karar !== "sisik");
   const srt = {gercek:(a, b) => ko(b) - ko(a), indirim:(a, b) => (b.oran || 0) - (a.oran || 0), kazanc:(a, b) => ((b.eski || b.fiyat) - b.fiyat) - ((a.eski || a.fiyat) - a.fiyat),
                ucuz:(a, b) => a.fiyat - b.fiyat, birim:(a, b) => (a.birimDeger ?? 1e12) - (b.birimDeger ?? 1e12)}[S.m.sirala] || (() => 0);
   d.sort(srt);
-  const katCip = [`<button type="button" class="cip kat" data-mkat="hepsi" aria-pressed="${S.m.kat === "hepsi"}">Tüm market kategorileri</button>`]
+  const katCip = [`<button type="button" class="cip kat" data-mkat="hepsi" aria-pressed="${S.m.kat === "hepsi"}">Tüm kategoriler</button>`]
     .concat(M_KATEGORI.map(([v, a]) => `<button type="button" class="cip kat" data-mkat="${esc(v)}" aria-pressed="${S.m.kat === v}">${esc(a)}</button>`)).join("");
   const zs = (L && L.zincirSay) || [];
   const zincirCip = [`<button type="button" class="cip" data-mzincir="hepsi" aria-pressed="${S.m.zincir === "hepsi"}">Tüm marketler</button>`]
-    .concat(Object.entries(M_ZINCIR).map(([v, a]) => { const z = zs.find(x => x.name === v); return `<button type="button" class="cip" data-mzincir="${v}" aria-pressed="${S.m.zincir === v}">${esc(a)}${z ? " " + z.count : ""}</button>`; })).join("");
-  const ilSecenek = ILLER.map(([no, ad]) => `<option value="${no}" ${!S.m.konum && S.m.il === no ? "selected" : ""}>${String(no).padStart(2, "0")} · ${esc(ad)}</option>`).join("");
+    .concat(Object.entries(M_ZINCIR).map(([v, a]) => { const z = zs.find(x => x.name === v); return `<button type="button" class="cip" data-mzincir="${v}" aria-pressed="${S.m.zincir === v}">${zEtiket(v)}${z ? " " + z.count : ""}</button>`; })).join("");
   const kalan = L && L.toplam != null ? Math.max(0, L.toplam - L.sayfa * 25) : 0;
+  const gorunen = d.slice(0, S.mv.limit);
+  S.mv.sonGorunen = L ? gorunen : null;
   let govde;
   if (L && L.hata && !d.length) govde = `<div class="bos-durum">${esc(L.hata)}<br><br><button type="button" class="ikincil" id="mYenile">Tekrar dene</button></div>`;
   else if (!d.length) govde = `<div class="bos-durum">${yukleniyor || !L ? "Market indirimleri getiriliyor…" : q || S.m.min ? "Bu filtreye uyan indirimli ürün yok." : "Bu konumda şu an indirimli ürün bulunamadı. Yarıçapı büyütmeyi ya da başka kategoriyi deneyin."}</div>`;
-  else govde = d.slice(0, S.mv.limit).map(mKart).join("")
+  else govde = `<div class="mf-izgara">${gorunen.map(mKart).join("")}</div>`
     + (d.length > S.mv.limit ? `<button type="button" class="daha" id="mGoster">Daha fazla göster (${d.length - S.mv.limit})</button>` : "")
     + (d.length > S.mv.limit ? "" : yukleniyor ? `<div class="bos-durum">Yükleniyor…</div>` : kalan > 0 ? `<button type="button" class="daha" id="mDaha">Daha fazla yükle (${kalan} ürün daha var)</button>` : "")
     + (L && L.hata ? `<div class="not">${esc(L.hata)}</div>` : "");
-  const odak = document.activeElement && document.activeElement.id === "mAra";
-  const pos = odak ? document.activeElement.selectionStart : null;
-  $("#icerik").innerHTML = `
+  return `
     <div class="filtre">
-      <div class="satir">
-        <select id="mIl" aria-label="Şehir">${S.m.konum ? `<option value="konum" selected>📍 Konumum</option>` : ""}${ilSecenek}</select>
-        <select id="mYaricap" aria-label="Arama yarıçapı">${[3,5,10,20].map(v => `<option value="${v}" ${S.m.yaricap === v ? "selected" : ""}>${v} km çevre</option>`).join("")}</select>
-        <button type="button" class="ikincil" id="mKonum">📍 Konumumu kullan</button>
-      </div>
-      <input type="search" id="mAra" placeholder="Market ürünlerinde ara (ör. çay, deterjan)" value="${esc(S.m.ara)}" autocomplete="off">
+      <input type="search" id="mAra" placeholder="İndirimli ürünlerde ara (ör. çay, deterjan)" value="${esc(S.m.ara)}" autocomplete="off">
       <div class="cipler">${katCip}</div>
       <div class="cipler">${zincirCip}</div>
       <div class="satir">
         <select id="mMin" aria-label="En az indirim">${[[0,"Tüm oranlar"],[10,"%10 ve üstü"],[20,"%20 ve üstü"],[30,"%30 ve üstü"],[50,"%50 ve üstü"]].map(([v,a]) => `<option value="${v}" ${S.m.min === v ? "selected" : ""}>${a}</option>`).join("")}</select>
-        <label class="anahtar"><input type="checkbox" id="mSisik" ${S.m.sisikGizle ? "checked" : ""}> Şişirilmiş indirimleri gizle${sisikSay && S.m.sisikGizle ? ` (${sisikSay})` : ""}</label>
         <select id="mSirala" aria-label="Sıralama">${[["gercek","En yüksek gerçek indirim"],["indirim","Marketin ilan ettiği indirim %"],["kazanc","En çok TL kazanç"],["ucuz","En ucuz"],["birim","En ucuz birim fiyat"]].map(([v,a]) => `<option value="${v}" ${S.m.sirala === v ? "selected" : ""}>${a}</option>`).join("")}</select>
       </div>
+      <label class="anahtar"><input type="checkbox" id="mSisik" ${S.m.sisikGizle ? "checked" : ""}> Şişirilmiş indirimleri gizle${sisikSay && S.m.sisikGizle ? ` (${sisikSay} gizlendi)` : ""}</label>
     </div>
-    <div class="not">${esc(k.ad)} · ${S.m.yaricap} km çevresindeki şubeler${L && L.toplam != null ? ` · ${L.toplam} indirimli ürün, ${L.urunler.length} tanesi yüklendi${d.length !== L.urunler.length ? `, ${d.length} tanesi filtreye uyuyor` : ""}` : ""}${yukleniyor ? " · yükleniyor…" : ""}.
-      Kaynak: Market Fiyatı (TÜBİTAK). Fiyatlar marketlerin bildirdiği şube fiyatlarıdır; kasada farklı olabilir.
-      “Gerçek indirim”: ürünün aynı markette son 90 günde çoğunlukla satıldığı fiyata göre hesaplanır; üstü çizili fiyat bu dönemde görülmediyse uyarılır. Sıralama yüklenen ürünler içinde yapılır. İndirim bilgisini şu an daha çok Migros, CarrefourSA ve BİM paylaşıyor.
-      Bu sekmedeki ürünler diğer sekmelere karışmaz.</div>
+    <div class="not">${esc(k.ad)} · ${S.m.yaricap} km çevresindeki şubeler${L && L.toplam != null ? ` · ${L.toplam} indirimli ürün, ${L.urunler.length} tanesi yüklendi${d.length !== L.urunler.length ? `, ${d.length} tanesi gösteriliyor` : ""}` : ""}${yukleniyor ? " · yükleniyor…" : ""}.
+      “Gerçek indirim” ürünün aynı markette son 90 günde çoğunlukla satıldığı fiyata göre hesaplanır. “Fiyatları karşılaştır” aynı ürünün çevredeki diğer marketlerdeki fiyatını gösterir.
+      Kaynak: Market Fiyatı (TÜBİTAK); fiyatlar marketlerin bildirdiği şube fiyatlarıdır. Bu sekmedeki ürünler diğer sekmelere karışmaz.</div>
     ${govde}`;
-  if (odak) { const a = $("#mAra"); a.focus(); try { a.setSelectionRange(pos, pos); } catch (e) {} }
-  // Ekranda görünen (ve sıradaki birkaç) ürünün fiyat geçmişini kontrol et
-  if (L) mKuyrugaAl(d.slice(0, S.mv.limit + 20));
 }
 
 function mDegisti(){ mSakla(); S.mv.limit = 60; S.mv.kuyruk = []; window.scrollTo(0, 0); marketCiz(); }
 document.addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t || S.sekme !== "market") return;
-  if (t.dataset.mkat) { S.m.kat = t.dataset.mkat; mDegisti(); }
+  if (t.dataset.mmod) { S.m.mod = t.dataset.mmod; mSakla(); window.scrollTo(0, 0); marketCiz(); if (S.m.mod === "kars") { const a = $("#mKq"); if (a && !S.m.kq) a.focus(); } }
+  else if (t.dataset.mkars) { const id = t.dataset.mkars; const u = Object.values(S.mv.liste).flatMap(L => L.urunler).find(x => x.id === id);
+    if (S.mv.acik[id] && !(S.mv.kars[id] && S.mv.kars[id].durum === "hata")) { delete S.mv.acik[id]; marketCiz(); } else if (u) { S.mv.acik[id] = 1; if (S.mv.kars[id] && S.mv.kars[id].durum === "hata") delete S.mv.kars[id]; S.mv.kars[id] ? marketCiz() : mKarsilastirGetir(u); } }
+  else if (t.dataset.maac) { const id = "a:" + t.dataset.maac; if (S.mv.acik[id]) delete S.mv.acik[id]; else S.mv.acik[id] = 1; marketCiz(); }
+  else if (t.dataset.mone) { S.m.kq = t.dataset.mone; mSakla(); mAraYukle(false); }
+  else if (t.id === "mAraDaha") mAraYukle(true);
+  else if (t.id === "mAraYenile") { S.mv.ara = null; mAraYukle(false); }
+  else if (t.dataset.mkat) { S.m.kat = t.dataset.mkat; mDegisti(); }
   else if (t.dataset.mzincir) { S.m.zincir = t.dataset.mzincir; mDegisti(); }
   else if (t.id === "mDaha") mYukle(true);
   else if (t.id === "mGoster") { S.mv.limit += 60; marketCiz(); }
@@ -5334,9 +5586,14 @@ document.addEventListener("change", e => {
   else if (t.id === "mMin") { S.m.min = +t.value; mSakla(); marketCiz(); }
   else if (t.id === "mSirala") { S.m.sirala = t.value; mSakla(); marketCiz(); }
   else if (t.id === "mSisik") { S.m.sisikGizle = t.checked; mSakla(); marketCiz(); }
+  else if (t.id === "mKsirala") { S.m.ksirala = t.value; mSakla(); marketCiz(); }
 });
 document.addEventListener("input", e => {
   if (e.target.id === "mAra") { S.m.ara = e.target.value; mSakla(); marketCiz(); }
+  if (e.target.id === "mKq") { S.m.kq = e.target.value; mSakla(); clearTimeout(S.mv.kqZaman); S.mv.kqZaman = setTimeout(() => { if (S.m.kq.trim().length >= 2) mAraYukle(false); }, 700); }
+});
+document.addEventListener("submit", e => {
+  if (e.target.id === "mKqForm") { e.preventDefault(); clearTimeout(S.mv.kqZaman); const a = $("#mKq"); if (a) a.blur(); S.mv.ara = null; mAraYukle(false); }
 });
 
 function ciz(){ cizGovde(); detayCiz(); canliGozle(); }
