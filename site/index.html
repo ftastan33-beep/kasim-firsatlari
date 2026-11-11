@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{SITE_ADI}} · {{SLOGAN}}</title>
+<meta name="description" content="{{SITE_ADI}}: {{SLOGAN}}. Her fırsatın fiyatı ve stoğu mağaza sayfasında kontrol edilir; tükenen ya da fiyatı yükselen ürün listeden çıkar.">
+<meta name="theme-color" content="#123d2f">
+<meta property="og:title" content="{{SITE_ADI}}">
+<meta property="og:description" content="{{SLOGAN}}">
+<meta property="og:image" content="ikon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="ikon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="ikon-192.png">
+<link rel="stylesheet" href="stil.css?v={{SURUM}}">
+</head>
+<body>
+<header class="ust">
+  <div class="kap ust-ic">
+    <a class="marka" href="./" aria-label="{{SITE_ADI}} ana sayfa">
+      <img src="ikon.svg" alt="" width="34" height="34">
+      <span><b>{{SITE_ADI}}</b><small>{{SLOGAN}}</small></span>
+    </a>
+    <div class="ust-dugmeler">
+      <a id="tg" class="dugme ikincil" hidden target="_blank" rel="noopener" href="https://t.me/{{TELEGRAM}}">Telegram</a>
+      <button id="yukle" class="dugme" hidden>Uygulamayı yükle</button>
+    </div>
+  </div>
+</header>
+
+<main class="kap">
+  <section class="giris">
+    <h1>Bugünün <em>gerçek</em> indirimleri</h1>
+    <p>Her ürünün fiyatı ve stoğu mağaza sayfasında tek tek kontrol edilir. Tükenen ya da fiyatı yükselen ürün listeden kendiliğinden çıkar.</p>
+    <p id="durum" class="durum" role="status">Fırsatlar yükleniyor…</p>
+  </section>
+
+  <div class="arac" role="search">
+    <input id="ara" type="search" placeholder="Ürün ara (ör. airfryer, kulaklık)" aria-label="Ürün ara" autocomplete="off">
+    <select id="sirala" aria-label="Sıralama">
+      <option value="yeni">En yeni</option>
+      <option value="indirim">En yüksek indirim</option>
+      <option value="ucuz">En düşük fiyat</option>
+    </select>
+  </div>
+  <div id="magazalar" class="cipler" aria-label="Mağaza filtresi"></div>
+
+  <div id="ios" class="ipucu" hidden>Ana ekrana eklemek için Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>'ye dokunun.</div>
+  <section id="liste" class="liste" aria-live="polite"></section>
+  <p id="bos" class="bos" hidden>Bu filtreye uyan fırsat yok. Filtreyi temizleyin ya da biraz sonra tekrar bakın.</p>
+</main>
+
+<footer class="alt">
+  <div class="kap">
+    <p><b>Nasıl çalışır?</b> Fırsatlar farklı kaynaklardan toplanır; listeye yalnızca mağaza sayfasında fiyatı ve stoğu doğrulananlar girer. Fiyatlar mağaza tarafından her an değiştirilebilir. Satın almadan önce mağazadaki fiyatı kontrol edin.</p>
+    <p>Bu sayfadaki bazı bağlantılar satış ortaklığı bağlantısı olabilir; bu bağlantılardan yapılan alışverişten {{SITE_ADI}} komisyon alabilir, sizin ödediğiniz fiyat değişmez. Sitede çerez ve reklam takibi kullanılmaz.</p>
+    <p><a href="yasal.html">Yasal bilgiler ve iletişim</a> · © {{YIL}} {{SITE_ADI}}</p>
+  </div>
+</footer>
+
+<template id="kart-sablon">
+  <article class="kart">
+    <a class="gorsel" target="_blank" rel="nofollow sponsored noopener"><img alt="" loading="lazy" referrerpolicy="no-referrer"></a>
+    <div class="govde">
+      <div class="ust-satir"><span class="magaza"></span><span class="yeni" hidden>Yeni</span></div>
+      <h2 class="baslik"><a target="_blank" rel="nofollow sponsored noopener"></a></h2>
+      <div class="fiyatlar"><span class="fiyat"></span><s class="eski"></s><span class="oran"></span></div>
+      <ul class="notlar"></ul>
+      <div class="alt-satir">
+        <span class="teyit"></span>
+        <a class="dugme git" target="_blank" rel="nofollow sponsored noopener">Mağazada gör</a>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script src="app.js?v={{SURUM}}" defer></script>
+</body>
+</html>

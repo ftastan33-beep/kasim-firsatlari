@@ -51,7 +51,7 @@ from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.1"
+SURUM = "3.2"
 GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
@@ -2437,7 +2437,8 @@ class Depo:
                 kuyruk.pop(gid, None)
                 return False
             durum, an = s_.get("durum"), int(time.time())
-            sonuc = {"ts": an, "motor": s_.get("motor")}
+            sonuc = {"ts": an, "motor": s_.get("motor"), "son_url": s_.get("son_url"),
+                     "liste_fiyati": s_.get("liste_fiyati")}
             yeniden = None
             if durum == "ok":
                 sonuc["fiyat"] = s_.get("fiyat")
@@ -3109,6 +3110,7 @@ class Depo:
                 "bildirim_var": bool(shutil.which("termux-notification") or self.ayarlar.get("ntfy_konu")),
                 "termux_bildirim": bool(shutil.which("termux-notification")),
                 "dogrulama": self.dogrulama_ozeti(),
+                "yayin": self.yayinci.ozet() if getattr(self, "yayinci", None) else None,
                 "firsatlar": self.firsatlar(),
             }
 
@@ -3738,6 +3740,17 @@ def statik_site(cikis):
           f" · geriye tarama biten kanal {sum(1 for x in derin.values() if x.get('bitti'))}/{len(derin)}")
 
 
+def yayinci_olustur(depo):
+    """yayin.py ve site/ programın yanındaysa yayıncıyı hazırlar (Termux gibi tek dosyalı kurulumda yoktur)."""
+    dizin = os.path.dirname(os.path.abspath(__file__))
+    if not os.path.isfile(os.path.join(dizin, "yayin.py")):
+        return None
+    sys.path.insert(0, dizin)
+    import yayin
+    depo.yayinci = yayin.Yayinci(depo, VERI_DIZINI, os.path.join(dizin, "site"), SURUM)
+    return depo.yayinci
+
+
 def main():
     ap = argparse.ArgumentParser(description="Kasım Fırsatları — telefonda çalışan indirim takipçisi")
     ap.add_argument("--port", type=int, default=VARSAYILAN_PORT, help="yerel sayfanın portu (varsayılan 8765)")
@@ -3746,6 +3759,9 @@ def main():
     ap.add_argument("--tek-sefer", action="store_true", help="bir kez çek, en iyi 15 fırsatı terminale yaz")
     ap.add_argument("--statik", metavar="KLASOR", help="bir kez çek ve internette yayınlanacak siteyi bu klasöre yaz")
     ap.add_argument("--dosyadan", metavar="HTML", help="(test) kaydedilmiş t.me/s sayfasını çöz")
+    ap.add_argument("--yayin-kur", action="store_true", help="herkese açık site (GitHub Pages) ayarlarını yap")
+    ap.add_argument("--yayin-onizle", metavar="KLASOR", help="herkese açık siteyi mevcut veriyle bu klasöre yaz (yüklemeden)")
+    ap.add_argument("--yayin-simdi", action="store_true", help="bir kez yenile, doğrula ve herkese açık siteyi hemen yükle")
     ap.add_argument("--ag", action="store_true",
                     help="aynı Wi-Fi'deki telefondan açılabilsin (bilgisayarda çalıştırırken kullanın)")
     a = ap.parse_args()
@@ -3763,6 +3779,33 @@ def main():
         return statik_site(a.statik)
     if a.dosyadan:
         return dosyadan_coz(a.dosyadan)
+    if a.yayin_kur:
+        import yayin
+        os.makedirs(VERI_DIZINI, exist_ok=True)
+        return yayin.kurulum_sihirbazi(VERI_DIZINI)
+    if a.yayin_onizle or a.yayin_simdi:
+        depo = Depo()
+        yy = yayinci_olustur(depo)
+        if not yy:
+            print("Yayın modülü (yayin.py ve site/ klasörü) programın yanında bulunamadı.")
+            return
+        if a.yayin_simdi and not yy.hazir():
+            print("Önce kurulum yapın:  python kasim_firsat.py --yayin-kur  (Windows: Yayin-Kur.bat)")
+            return
+        if a.yayin_simdi:
+            print("Kanallar okunuyor ve mağazada doğrulanıyor (birkaç dakika)...")
+            depo.yenile()
+            depo.dogrulama_turu(sure_sn=300)
+        if a.yayin_onizle:
+            n = yy.onizle(a.yayin_onizle)
+            print(f"Önizleme yazıldı: {a.yayin_onizle} · {n} fırsat (klasörde 'python -m http.server' ile açabilirsiniz)")
+        else:
+            if not yy.hazir():
+                print("Önce kurulum yapın:  python kasim_firsat.py --yayin-kur")
+                return
+            n = yy.yayinla(zorla=True)
+            print(f"Yüklendi: {n} fırsat → {yy.ozet()['adres']}")
+        return
 
     url = f"http://127.0.0.1:{a.port}/"
     try:
@@ -3782,6 +3825,10 @@ def main():
         Isleyici.ag_adresi = f"http://{ip}:{a.port}/?k={Isleyici.anahtar}" if ip else None
     threading.Thread(target=depo.dongu, daemon=True).start()
     threading.Thread(target=depo.dogrulayici_dongu, daemon=True).start()   # Aşama 2: doğrulayıcı
+    yy = yayinci_olustur(depo)
+    if yy and yy.hazir():
+        threading.Thread(target=yy.dongu, daemon=True).start()               # Aşama 3: herkese açık site
+        print(f"Herkese açık site: {yy.ozet()['adres']} (10 dakikada bir güncellenir)")
     print(f"Kasım Fırsatları {SURUM} çalışıyor → {url}")
     print(f"Mağaza okuma: {' → '.join(motor_ozeti())}" + ("" if _cffi else
           "  (daha iyi sonuç için: pip install curl_cffi)"))

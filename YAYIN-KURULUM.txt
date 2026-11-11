@@ -1,0 +1,61 @@
+TEYİTLİ FIRSAT — HERKESE AÇIK SİTE KURULUMU (bir kez, ~15 dakika)
+=================================================================
+
+Nasıl çalışır?
+  Bilgisayardaki Kasım Fırsatları programı fırsatları toplar ve mağazada doğrular (ev internetiyle,
+  engellenmeden). Doğrulananlar 10 dakikada bir GitHub'daki site deposuna gönderilir; GitHub Pages
+  siteyi ücretsiz yayınlar. BİLGİSAYAR KAPALIYKEN site son listeyi gösterir, güncellenmez.
+
+1) SİTE DEPOSUNU AÇIN
+   github.com'a girin → sağ üstte "+" → "New repository"
+   - Repository name: teyitli-firsat   (istediğiniz ad olabilir)
+   - Public seçili kalsın (ücretsiz GitHub Pages için gerekli)
+   - Başka hiçbir şeyi işaretlemeyin → "Create repository"
+
+2) YAZMA ANAHTARI (TOKEN) OLUŞTURUN
+   github.com → sağ üstte profil resmi → Settings → en altta "Developer settings"
+   → "Personal access tokens" → "Fine-grained tokens" → "Generate new token"
+   - Token name: teyitli-firsat-yayin
+   - Expiration: 1 year (süre dolunca aynı adımlarla yenisini oluşturup 3. adımı tekrarlayın)
+   - Repository access: "Only select repositories" → teyitli-firsat
+   - Permissions → Repository permissions → Contents: "Read and write"
+   - "Generate token" → çıkan anahtarı kopyalayın (bir daha gösterilmez)
+
+3) PROGRAMA TANITIN
+   Program klasöründe "Yayin-Kur.bat" dosyasına çift tıklayın ve soruları cevaplayın:
+   - Site adı (Enter = Teyitli Fırsat)
+   - GitHub deposu: kullanıcıadınız/teyitli-firsat
+   - Anahtar: 2. adımda kopyaladığınızı yapıştırın (ekranda görünmez, bu normal)
+   - İletişim e-postası: yasal sayfada görünür (içerik kaldırma talepleri için)
+   - Telegram: istemiyorsanız "h"
+   Ekranda "✔ Depo bulundu" yazmalı.
+
+4) İLK YÜKLEME VE GITHUB PAGES
+   Kasim-Firsatlari-Baslat.bat ile programı başlatın. ~10 dakika içinde siyah pencerede
+   "[yayın] ... fırsat yayında" satırı görünür. Sonra:
+   GitHub → teyitli-firsat deposu → Settings → Pages
+   → Source: "Deploy from a branch" → Branch: main, klasör: / (root) → Save
+   1-2 dakika sonra site açılır:  https://KULLANICIADI.github.io/teyitli-firsat/
+
+5) TELEFONA UYGULAMA OLARAK KURMA
+   Android (Chrome): siteyi açın → üstteki "Uygulamayı yükle" ya da menü → "Ana ekrana ekle"
+   iPhone (Safari): Paylaş → "Ana Ekrana Ekle"
+
+İSTEĞE BAĞLI
+  Telegram kanalı: Telegram'da @BotFather → /newbot → bot anahtarını alın. Kanalı açın, botu kanala
+    YÖNETİCİ olarak ekleyin. Yayin-Kur.bat'ı tekrar çalıştırıp Telegram sorusuna "e" deyin.
+    İlk turda mevcut liste kanala dökülmez; sonrasında her yeni fırsat (turda en fazla 8) paylaşılır.
+  Özel alan adı (ör. teyitlifirsat.com): alan adını alın, Yayin-Kur.bat'ta yazın, alan adı
+    sağlayıcısında GitHub Pages'in istediği DNS kayıtlarını girin (Settings → Pages → Custom domain).
+  Satış ortaklığı: hesaplar onaylanınca ayarlar dosyasına (kullanıcı klasörü\.kasim_firsat\yayin.json)
+    "ortaklik" bölümü eklenir. Örnek:
+      "ortaklik": {"amazon": {"param": {"tag": "sizinkodunuz-21"}},
+                   "trendyol": {"sablon": "https://...{url_kodlu}..."}}
+    Başka kanalların ortaklık kodları linklerden her durumda temizlenir.
+
+SORUN GİDERME
+  "anahtarı geçersiz"          → 2. adımı tekrarlayın, Yayin-Kur.bat'ta yeni anahtarı yapıştırın.
+  "yazma izni yok"             → Token'da Contents: Read and write seçili olmalı.
+  Site boş görünüyor           → Doğrulanmış fırsat yoksa liste boştur; programın en az 15-20 dk açık
+                                 kalması gerekir. Hemen denemek için:  py kasim_firsat.py --yayin-simdi
+  Yüklemeden önizleme          → py kasim_firsat.py --yayin-onizle onizleme

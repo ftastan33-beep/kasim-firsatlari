@@ -75,3 +75,17 @@ Ortam değişkenleri: `KF_DOGRULAMA_SN` (sitede doğrulamaya ayrılan süre, var
 `KF_CFFI_PROFIL` (curl_cffi taklit profili, varsayılan `chrome`), `KF_TARAYICI=1` (tarayıcı yedeği).
 
 Testler: `python -m unittest discover -s tests -v`
+
+## 3.2 — Herkese açık site ve uygulama (Teyitli Fırsat)
+
+Bilgisayardaki program doğruladığı fırsatları 10 dakikada bir herkese açık siteye gönderir (`yayin.py`, şablon `site/`).
+Site GitHub Pages'te ücretsiz yayınlanır ve telefona uygulama olarak (PWA) kurulabilir.
+
+- **Seçim:** yalnızca mağazada son 6 saat içinde teyit edilmiş, en az %10 indirimli ya da dip fiyattaki ürünler.
+  Akakçe'de %15'ten fazla ucuzu olan ürün yayına girmez.
+- **İçerik:** kart mağaza verisinden ve kendi metnimizle oluşturulur. Telegram kanallarının metni ve adı kullanılmaz.
+- **Link:** başka kanalların ortaklık ve izleme kodları temizlenir; ortaklık hesabı tanımlanınca bizim kodumuz eklenir.
+- **Yükleme:** değişen dosyalar tek commit'le gönderilir (Git Data API); liste değişmemişse yükleme yapılmaz.
+- **Telegram:** isteğe bağlı; yeni fırsatlar kanala otomatik paylaşılır.
+
+Kurulum: `YAYIN-KURULUM.txt` → `Yayin-Kur.bat`. Komutlar: `--yayin-kur`, `--yayin-onizle KLASOR`, `--yayin-simdi`.
