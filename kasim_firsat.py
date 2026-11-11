@@ -5156,12 +5156,41 @@ function mKonum(){
 }
 function mAnahtar(){ const k = mKonum(); return [k.anahtar, S.m.yaricap, S.m.kat, S.m.zincir].join("|"); }
 
+// Market Fiyatı'nı yormamak için: aynı anda en çok 2 istek, istekler arası en az 250 ms; engellenirse 2 dk beklenir.
+const M_SIRA = {aktif:0, bekleyen:[], son:0, durdur:0};
+function mSiraAl(){
+  return new Promise(coz => { M_SIRA.bekleyen.push(coz); mSiraIlerle(); });
+}
+function mSiraIlerle(){
+  if (M_SIRA.aktif >= 2 || !M_SIRA.bekleyen.length) return;
+  const bekle = Math.max(0, M_SIRA.son + 250 - Date.now());
+  if (bekle > 0) { clearTimeout(M_SIRA.z); M_SIRA.z = setTimeout(mSiraIlerle, bekle); return; }
+  M_SIRA.aktif++; M_SIRA.son = Date.now();
+  M_SIRA.bekleyen.shift()();
+  mSiraIlerle();
+}
+function mSiraBirak(){ M_SIRA.aktif--; mSiraIlerle(); }
+function mDurduMu(){ return Date.now() < M_SIRA.durdur; }
 async function mfIstek(yol, govde){
+  if (mDurduMu()) throw new Error("Market Fiyatı çok sık istek nedeniyle kısa süreliğine yanıt vermiyor; " + Math.ceil((M_SIRA.durdur - Date.now()) / 60000) + " dk sonra tekrar deneyin.");
+  await mSiraAl();
+  try { return await mfIstekHam(yol, govde); }
+  catch (e) {
+    // Ağ hatası ya da 429: muhtemelen geçici engel — tüm isteklere 2 dakika ara ver
+    if (!(e && e.name === "AbortError") && /Failed to fetch|NetworkError|429|Load failed/i.test(String(e && e.message || e))) {
+      M_SIRA.durdur = Date.now() + 120000;
+      throw new Error("Market Fiyatı’na ulaşılamadı: internet bağlantısı yok ya da çok sık istek yüzünden geçici olarak bekletiliyor. 2 dakika sonra tekrar deneyin.");
+    }
+    throw e;
+  } finally { mSiraBirak(); }
+}
+async function mfIstekHam(yol, govde){
   // Önce doğrudan (Market Fiyatı herkese açık istek kabul ediyor); olmazsa bilgisayardaki program aracılığıyla.
   const zaman = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
   try {
     const r = await fetch(MF_API + yol, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(govde), signal:zaman(20000)});
     if (r.ok) return await r.json();
+    if (r.status === 429) throw new Error("429 · Market Fiyatı çok sık istek nedeniyle bekletiyor");
     if (r.status >= 400 && r.status < 500) throw new Error("Market Fiyatı isteği kabul etmedi (" + r.status + ")");
   } catch (e) {
     if (S.veri && (S.veri.statik || S.veri.onizleme)) throw e;
@@ -5265,9 +5294,20 @@ function mKarar(u){
   return Object.assign({}, g, {gercek, karar, eskiSisik: !!(u.eski && u.eski > g.max * 1.02)});
 }
 function mTarih(t){ try { return new Date(t + "T12:00:00").toLocaleDateString("tr-TR", {day:"numeric", month:"long"}); } catch (e) { return t; } }
+// Fiyat geçmişi sonuçları bu cihazda 12 saat saklanır (aynı ürün için tekrar istek atılmaz)
+const M_GECMIS_SURE = 12 * 3600 * 1000;
+try { const k = JSON.parse(localStorage.getItem("kf-mgecmis") || "{}"); const n = Date.now(); for (const [a, v] of Object.entries(k)) if (v && n - v.t < M_GECMIS_SURE) S.mv.gecmis[a] = v; } catch (e) {}
+function mGecmisSakla(){
+  clearTimeout(S.mv.gsZaman);
+  S.mv.gsZaman = setTimeout(() => { try {
+    const n = Date.now(), e = Object.entries(S.mv.gecmis).filter(([, v]) => v && v.t && v.durum !== "hata" && n - v.t < M_GECMIS_SURE).sort((a, b) => b[1].t - a[1].t).slice(0, 1500);
+    localStorage.setItem("kf-mgecmis", JSON.stringify(Object.fromEntries(e)));
+  } catch (x) {} }, 2000);
+}
 function mKuyrugaAl(liste){
-  liste.forEach(u => { const a = mGecmisAnahtar(u); if (u.depo && !S.mv.gecmis[a] && !S.mv.kuyruk.some(x => mGecmisAnahtar(x) === a)) S.mv.kuyruk.push(u); });
-  for (let i = S.mv.calisan; i < 4; i++) mIsci();
+  // Yalnızca ekranda görünen ürünler; sıra her çizimde yenilenir (kaydırılıp geçilenler beklemez)
+  S.mv.kuyruk = liste.filter(u => u.depo && !S.mv.gecmis[mGecmisAnahtar(u)]);
+  if (!S.mv.calisan) mIsci();
 }
 async function mIsci(){
   if (!S.mv.kuyruk.length) return;
@@ -5275,11 +5315,13 @@ async function mIsci(){
   while (S.mv.kuyruk.length) {
     const u = S.mv.kuyruk.shift(), a = mGecmisAnahtar(u);
     if (S.mv.gecmis[a]) continue;
-    try { S.mv.gecmis[a] = mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})); }
-    catch (e) { S.mv.gecmis[a] = {durum:"hata"}; }
+    if (mDurduMu()) break;
+    try { S.mv.gecmis[a] = Object.assign(mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})), {t:Date.now()}); mGecmisSakla(); }
+    catch (e) { if (!mDurduMu()) S.mv.gecmis[a] = {durum:"hata", t:Date.now()}; }
     mCizErtele();
   }
   S.mv.calisan--;
+  if (mDurduMu() && S.mv.kuyruk.length) setTimeout(() => { if (!S.mv.calisan) mIsci(); }, M_SIRA.durdur - Date.now() + 1000);
 }
 function mCizErtele(){ if (S.mv.cizZaman) return; S.mv.cizZaman = setTimeout(() => { S.mv.cizZaman = null; const ae = document.activeElement; if (S.sekme === "market" && !(ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m"))) marketCiz(); }, 500); }
 
@@ -5357,7 +5399,7 @@ function mKart(u){
     } else rozet.push(`<span class="rozet r-kirmizi">⚠️ Şişirilmiş indirim: son ${k.gun} günde çoğunlukla ${tl(k.medyan)}</span>`);
     if (k.eskiSisik) rozet.push(`<span class="rozet r-sari">Üstü çizili ${tl(u.eski)} son ${k.gun} günde hiç görülmedi</span>`);
     if (u.oran != null && Math.abs(u.oran - k.gercek) >= 3) rozet.push(`<span class="rozet">Marketin ilan ettiği: %${u.oran}</span>`);
-  } else if (k.durum === "bekliyor") rozet.push(`<span class="rozet">⏳ Fiyat geçmişi kontrol ediliyor…</span>`);
+  } else if (k.durum === "bekliyor") rozet.push(mDurduMu() ? `<span class="rozet r-sari">⏸ Fiyat geçmişi birazdan kontrol edilecek</span>` : `<span class="rozet">⏳ Fiyat geçmişi kontrol ediliyor…</span>`);
   else if (k.durum === "az") rozet.push(`<span class="rozet r-sari">Fiyat geçmişi yetersiz · oran marketin beyanı</span>`);
   else rozet.push(`<span class="rozet r-sari">Fiyat geçmişi okunamadı · oran marketin beyanı</span>`);
   if (u.promo) rozet.push(`<span class="rozet r-mavi">${esc(u.promo)}</span>`);
@@ -5490,7 +5532,7 @@ function mIndirimGorunum(k){
     .concat(Object.entries(M_ZINCIR).map(([v, a]) => { const z = zs.find(x => x.name === v); return `<button type="button" class="cip" data-mzincir="${v}" aria-pressed="${S.m.zincir === v}">${zEtiket(v)}${z ? " " + z.count : ""}</button>`; })).join("");
   const kalan = L && L.toplam != null ? Math.max(0, L.toplam - L.sayfa * 25) : 0;
   const gorunen = d.slice(0, S.mv.limit);
-  S.mv.sonGorunen = L ? d.slice(0, S.mv.limit + 20) : null;
+  S.mv.sonGorunen = L ? gorunen : null;
   let govde;
   if (L && L.hata && !d.length) govde = `<div class="bos-durum">${esc(L.hata)}<br><br><button type="button" class="ikincil" id="mYenile">Tekrar dene</button></div>`;
   else if (!d.length) govde = `<div class="bos-durum">${yukleniyor || !L ? "Market indirimleri getiriliyor…" : q || S.m.min ? "Bu filtreye uyan indirimli ürün yok." : "Bu konumda şu an indirimli ürün bulunamadı. Yarıçapı büyütmeyi ya da başka kategoriyi deneyin."}</div>`;
