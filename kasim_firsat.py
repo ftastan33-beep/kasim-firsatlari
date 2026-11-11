@@ -4294,6 +4294,7 @@ details.metin div{white-space:pre-wrap;margin-top:6px;color:var(--soluk);overflo
 .mf-satir.ucuz{background:rgba(22,163,74,.07)}
 .mf-satir.bu{box-shadow:inset 3px 0 0 var(--mf-mavi)}
 .mf-z{display:flex;flex-direction:column;gap:4px;min-width:0}
+.mf-z .zchip{align-self:flex-start}
 .mf-z small{font-size:11.5px;color:var(--soluk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mf-f{display:flex;flex-direction:column;line-height:1.2}
 .mf-f b{font-size:17px;font-weight:800;color:var(--metin)}
