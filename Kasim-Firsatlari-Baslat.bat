@@ -2,6 +2,8 @@
 chcp 65001 >nul
 title Kasim Firsatlari
 cd /d "%~dp0"
+rem Program klasorunde "veri" klasoru varsa ayarlar ve veriler orada tutulur (tasinabilir kurulum)
+if exist "%~dp0veri\" set "KASIM_FIRSAT_DIZIN=%~dp0veri"
 
 set "PY="
 where py >nul 2>nul && set "PY=py -3"
