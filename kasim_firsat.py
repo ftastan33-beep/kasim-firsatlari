@@ -5433,7 +5433,7 @@ function mAraKart(c){
   const enPahali = sat[sat.length - 1].price;
   return `<article class="mf-kart${acik ? " acik" : ""}">
     <div class="mf-ust">
-      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${sat.length > 1 && enPahali - en.price >= 0.01 ? `<div class="mf-oran orta" title="En ucuz ile en pahalı market arasındaki fark">%${Math.round((enPahali / en.price - 1) * 100)}<small>fark</small></div>` : ""}</div>
+      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${sat.length > 1 && Math.round((enPahali / en.price - 1) * 100) >= 1 ? `<div class="mf-oran orta" title="En ucuz ile en pahalı market arasındaki fark">%${Math.round((enPahali / en.price - 1) * 100)}<small>fark</small></div>` : ""}</div>
       <div class="mf-bilgiler">
         <div class="mf-ad" title="${esc(c.title)}">${esc(c.title)}</div>
         <div class="mf-zs">${zEtiket(en.marketAdi)}${sat.length > 1 ? `<small>+${sat.length - 1} market</small>` : `<small>${esc(en.depotName || "")}</small>`}</div>
