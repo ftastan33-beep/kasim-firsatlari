@@ -5203,7 +5203,7 @@ async function mYukle(devam){
   if (!devam && L && !L.hata && Date.now() - L.t < M_ONBELLEK_MS) return;
   if (S.mv.yuk === anahtar) return;
   if (!L || !devam) L = S.mv.liste[anahtar] = {t:Date.now(), urunler:[], idler:{}, sayfa:0, toplam:null, zincirSay:null, hata:null};
-  S.mv.yuk = anahtar; L.hata = null; if (S.sekme === "market") marketCiz();
+  S.mv.yuk = anahtar; L.hata = null; if (S.sekme === "market") { try { marketCiz(); } catch (e) { console.error(e); } }
   try {
     const depots = await mDepolar();
     if (!depots.length) throw new Error("Bu konumun " + S.m.yaricap + " km çevresinde kayıtlı market şubesi bulunamadı. Yarıçapı büyütün.");
@@ -5238,6 +5238,50 @@ async function mYukle(devam){
     if (S.sekme === "market") marketCiz();
   }
 }
+
+// --- Gerçek indirim kontrolü: ürünün aynı marketteki son 90 günlük fiyatı (Market Fiyatı fiyat geçmişi) ---
+function mGecmisAnahtar(u){ return u.id + "|" + u.depo; }
+function mGecmisOzet(u, h){
+  const seri = (Array.isArray(h) ? h : []);
+  const s = seri.find(x => x.name === u.zincir) || seri[0];
+  const v = s && Array.isArray(s.series) ? s.series.filter(p => p && typeof p.value === "number" && p.value > 0).map(p => ({t:p.name, v:p.value})) : [];
+  if (v.length < 7) return {durum:"az", gun:v.length};
+  // Şu anki fiyatın başladığı gün: sondan geriye aynı fiyat sürdükçe
+  let k = v.length - 1;
+  while (k > 0 && Math.abs(v[k - 1].v - v[v.length - 1].v) < 0.01) k--;
+  const once = v.slice(0, k);
+  if (once.length < 7) return {durum:"az", gun:v.length};
+  const sirali = once.map(x => x.v).sort((a, b) => a - b);
+  const medyan = sirali[Math.floor(sirali.length / 2)];
+  let min = once[0]; once.forEach(x => { if (x.v < min.v) min = x; });
+  return {durum:"ok", medyan, min:min.v, minTarih:min.t, max:sirali[sirali.length - 1], gun:once.length, bas:v[k].t};
+}
+function mKarar(u){
+  const g = S.mv.gecmis[mGecmisAnahtar(u)];
+  if (!g) return {durum:"bekliyor"};
+  if (g.durum !== "ok") return g;
+  const gercek = Math.round((1 - u.fiyat / g.medyan) * 100);
+  const karar = u.fiyat <= g.min + 0.01 ? "dip" : gercek >= 5 ? "gercek" : "sisik";
+  return Object.assign({}, g, {gercek, karar, eskiSisik: !!(u.eski && u.eski > g.max * 1.02)});
+}
+function mTarih(t){ try { return new Date(t + "T12:00:00").toLocaleDateString("tr-TR", {day:"numeric", month:"long"}); } catch (e) { return t; } }
+function mKuyrugaAl(liste){
+  liste.forEach(u => { const a = mGecmisAnahtar(u); if (u.depo && !S.mv.gecmis[a] && !S.mv.kuyruk.some(x => mGecmisAnahtar(x) === a)) S.mv.kuyruk.push(u); });
+  for (let i = S.mv.calisan; i < 4; i++) mIsci();
+}
+async function mIsci(){
+  if (!S.mv.kuyruk.length) return;
+  S.mv.calisan++;
+  while (S.mv.kuyruk.length) {
+    const u = S.mv.kuyruk.shift(), a = mGecmisAnahtar(u);
+    if (S.mv.gecmis[a]) continue;
+    try { S.mv.gecmis[a] = mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})); }
+    catch (e) { S.mv.gecmis[a] = {durum:"hata"}; }
+    mCizErtele();
+  }
+  S.mv.calisan--;
+}
+function mCizErtele(){ if (S.mv.cizZaman) return; S.mv.cizZaman = setTimeout(() => { S.mv.cizZaman = null; const ae = document.activeElement; if (S.sekme === "market" && !(ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m"))) marketCiz(); }, 500); }
 
 function mSlug(s){ return sadeJS(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
 // Market zincirlerinin kendi renkleri (Market Fiyatı'ndaki gibi); logo yerine renkli ad etiketi kullanılır
