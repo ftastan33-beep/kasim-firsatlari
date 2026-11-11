@@ -51,7 +51,7 @@ from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.2.1"
+SURUM = "3.3"
 GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
@@ -199,47 +199,92 @@ YE_KISA_RE = re.compile(r"(?<![\w.,])(" + SAYI + r")\s*" + PARA + r"\s*['’]\s*
                         r"(?![\wçğıöşü])")
 BITTI_RE = re.compile(r"(?:^|[^\wçğıöşü])(?:bitti|tükendi|stok(?:lar)? (?:bitti|tükendi)|sona erdi|süresi doldu|"
                       r"kampanya bitmiştir|fırsat bitmiştir|artık geçerli değil|geçersizdir artık)(?:[^\wçğıöşü]|$)")
-# Önce kesin ifadeler (çakışmaları çözer), sonra sıralı kategori kelimeleri. Tümü aksansız küçük harf.
+# Önce kesin ifadeler (çakışmaları çözer; sıra önemlidir, ilk eşleşen kazanır), sonra sıralı kategori kelimeleri.
+# Tümü aksansız küçük harf. Kelimeler kelime başından eşleşir; sonuna boşluk konan kelime tam kelime olarak aranır.
 KATEGORI_KESIN = [
-    ("cekirdek kahve", "market"), ("kapsul kahve", "market"), ("filtre kahve", "market"), ("turk kahvesi", "market"),
-    ("kosu bandi", "spor"), ("yuruyus bandi", "spor"), ("dis fircasi", "kozmetik"), ("agiz dusu", "kozmetik"), ("sac kurutma", "kozmetik"), ("tiras", "kozmetik"),
-    ("prezervatif", "kozmetik"), ("supurge", "ev"), ("ayakkabilik", "ev"), ("oyuncu koltugu", "ev"),
-    ("oto koltugu", "bebek"), ("park yatak", "bebek"), ("kahve makinesi", "ev"), ("espresso makinesi", "ev"),
-    ("kol saati", "giyim"), ("akilli saat", "elektronik"), ("islak mendil", "market"),
+    # temizlik sarf malzemesi (makine adı geçse de cihaz değildir)
+    ("bulasik makinesi tablet", "temizlik"), ("bulasik makinesi deterjan", "temizlik"), ("makine tableti", "temizlik"),
+    ("bulasik tableti", "temizlik"), ("camasir makinesi temizleyici", "temizlik"), ("arap sabunu", "temizlik"),
+    ("kagit havlu", "temizlik"), ("tuvalet kagidi", "temizlik"), ("islak mendil", "temizlik"), ("temizlik havlusu", "temizlik"),
+    ("asmali havlu", "temizlik"), ("cop torbasi", "temizlik"), ("cop poseti", "temizlik"),
+    # yapı ve oto (genel "yıkama makinesi" / "süpürge" kurallarından önce)
+    ("basincli yikama", "yapi"), ("kaynak makinesi", "yapi"), ("ufleme makinesi", "yapi"), ("uzatma kablosu", "yapi"),
+    ("arac kamerasi", "oto"), ("arac supurgesi", "oto"), ("aku takviye", "oto"), ("motor kaski", "oto"),
+    ("elektrikli scooter", "oto"), ("elektrikli motosiklet", "oto"), ("oto koltugu", "bebek"), ("park yatak", "bebek"),
+    ("mama sandalyesi", "bebek"), ("devam sutu", "bebek"), ("bebek bezi", "bebek"), ("bebek mamasi", "bebek"),
+    ("bebek monitoru", "bebek"),
+    # ev aletleri
+    ("bulasik makinesi", "beyaz"), ("camasir makinesi", "beyaz"), ("kurutma makinesi", "beyaz"), ("yikama makinesi", "beyaz"),
+    ("kahve makinesi", "beyaz"), ("espresso makinesi", "beyaz"), ("cay makine", "beyaz"), ("su sebili", "beyaz"),
+    ("derin dondurucu", "beyaz"), ("nem alma", "beyaz"), ("buhar makinesi", "beyaz"), ("tost makinesi", "beyaz"),
+    ("sac kurutma", "kozmetik"), ("dis fircasi", "kozmetik"), ("agiz dusu", "kozmetik"), ("tiras", "kozmetik"),
+    ("epilasyon", "kozmetik"), ("hasta bezi", "kozmetik"), ("emici kulot", "kozmetik"),
+    # gıda (kahve makinesi kuralından sonra)
+    ("cekirdek kahve", "gida"), ("kapsul kahve", "gida"), ("filtre kahve", "gida"), ("turk kahvesi", "gida"),
+    ("granul kahve", "gida"), ("aycicek yagi", "gida"), ("findik kremasi", "gida"), ("findik ezmesi", "gida"),
+    # bilgisayar ve oyun donanımı
+    ("oyuncu monitoru", "bilgisayar"), ("oyuncu mouse", "bilgisayar"), ("oyuncu kulakligi", "bilgisayar"),
+    ("oyuncu klavye", "bilgisayar"), ("oyun konsolu", "bilgisayar"), ("ekran karti", "bilgisayar"),
+    ("oyuncu koltugu", "ev"), ("ofis koltugu", "ev"), ("calisma koltugu", "ev"), ("uyku seti", "ev"), ("pazar arabasi", "ev"),
+    ("kosu bandi", "spor"), ("yuruyus bandi", "spor"), ("kamp buzlugu", "spor"),
+    ("akilli saat", "elektronik"), ("yazar kasa", "elektronik"), ("kol saati", "giyim"),
+    ("hava temizleyici", "beyaz"), ("philips hue", "ev"), ("on ve arka kamera", "oto"), ("outdoor bot", "giyim"), ("bot ", "giyim"),
 ]
 KATEGORILER = [
-    ("kozmetik", "Kozmetik & bakım", ("parfum", "edp", "edt", "sampuan", "kremi", "sac ", "sac,", "duzlestirici",
-                                       "makyaj", "ruj", "maskara", "deodorant", "bakim seti", "cilt", "serum",
-                                       "epilasyon", "durex", "nivea", "dudak", "parlatici", "fondoten", "oje",
-                                       "allik", "far paleti", "dis macunu", "sensodyne", "colgate", "maybelline", "loreal", "garnier", "rimel")),
-    ("elektronik", "Elektronik", ("telefon", "kulaklik", "televizyon", "tv", "miniled", "qled", "oled", "monitor",
-                                  "laptop", "dizustu", "bilgisayar", "all in one", "tablet", "ipad", "sarj aleti",
-                                  "kablo", "ssd", "flash bellek", "usb", "ekran karti", "rtx", "playstation", "ps5",
-                                  "xbox", "nintendo", "hoparlor", "kamera", "powerbank", "power bank", "modem",
-                                  "mouse", "klavye", "airpods", "iphone", "galaxy", "buds", "projeksiyon", "router",
-                                  "bluetooth", "kumanda", "watch")),
-    ("yapi", "Yapı market & oto", ("tornavida", "matkap", "boru kesici", "lokma", "bits", "pense", "anahtar takimi",
-                                   "dewalt", "makita", "bosch professional", "alet cantasi", "takim cantasi",
-                                   "oto aksesuar", "lastik", "aku ")),
+    ("evcil", "Evcil hayvan", ("kedi", "kopek", "kopegi", "kus yemi", "akvaryum", "pet shop", "tasma ")),
     ("bebek", "Anne, bebek & oyuncak", ("bebek", "lego", "oyuncak", "mama", "yurutec", "puset", "fisher-price",
-                                         "fisher price", "hot wheels", "barbie", "boyama", "kids", "oyun seti")),
-    ("ev", "Ev & mutfak", ("airfryer", "fritoz", "blender", "tabure", "sandalye", "isitici", "vantilator", "nemlendirici",
-                           "hava temizleyici", "fincan", "bardak", "kase", "askil", "kurutmalik", "kurutma askisi", "karistirma kabi",
-                           "rende", "saklama kabi", "dus basligi", "kahvalti takimi", "yemek takimi",
-                           "porselen", "seramik", "mikser", "espresso", "utu", "tencere", "tava", "catal",
-                           "kasik", "bicak", "termos", "ampul", "lamba", "nevresim", "battaniye", "havlu", "pestemal",
-                           "cop torbasi", "cop poseti", "dikis makinesi", "camasir makinesi", "bulasik makinesi",
-                           "buzdolabi", "cam temizleme", "su isiticisi", "kettle", "tost", "mutfak", "yastik", "hali",
-                           "mobilya", "koltuk", "hava temizleyici", "grill", "izgara", "bardak")),
-    ("giyim", "Giyim, ayakkabı & aksesuar", ("mont", "kazak", "tisort", "t-shirt", "sweatshirt", "ayakkabi", "boxer", "corap", "pijama",
-                                              "pantolon", "jean", "elbise", "ceket", "canta", "polo", "gomlek", "hirka",
-                                              "esofman", "sneaker", "polar", "kaban", "etek", "corap", "saat")),
+                                         "fisher price", "hot wheels", "barbie", "boyama", "oyun seti", "emzik", "biberon")),
+    ("kozmetik", "Kişisel bakım & kozmetik", ("parfum", "edp", "edt ", "sampuan", "kremi", "krem,", "nemlendirici krem", "sac ", "sac,", "duzlestirici",
+                                       "makyaj", "ruj", "maskara", "deodorant", "bakim seti", "cilt", "serum",
+                                       "durex", "nivea", "dudak", "parlatici", "fondoten", "oje", "sabun",
+                                       "allik", "far paleti", "dis macunu", "sensodyne", "colgate", "maybelline", "loreal",
+                                       "garnier", "rimel", "ped ", "pedi", "vazelin", "prezervatif", "kolonya", "jilet")),
+    ("temizlik", "Temizlik & kâğıt ürünleri", ("deterjan", "yumusatici", "camasir suyu", "bulasik", "temizleyici", "temizlik",
+                                               "pecete", "mendil", "kapsul", "leke cikarici", "cam sil", "yuzey")),
+    ("gida", "Gıda & içecek", ("cay ", "cayi", "caykur", "kahve", "biskuvi", "cikolata", "seker", "ice tea", "zeytinyagi",
+                               "zeytin", "peynir", "kuruyemis", "makarna", "pirinc", "bakliyat", "icecek", "kremasi",
+                               "surup", "atistirmalik", "kasar", "tavuk", "pilic", "incir", "sut ", "sutu", "tuz ", "salca",
+                               "bal ", "bali", "recel", "un ", "yag ", "yagi", "nutella", "gofret", "cips", "kraker",
+                               "meyve suyu", "maden suyu", "gazoz", "kola", "icme suyu", "kaynak suyu", "damacana su", "yumurta", "et ", "sucuk", "salam",
+                               "nescafe", "lipton", "tchibo", "jacobs", "ezmesi", "helva", "tahin", "pekmez", "konserve")),
+    ("bilgisayar", "Bilgisayar, oyun & donanım", ("laptop", "dizustu", "notebook", "bilgisayar", "all in one", "monitor",
+                                                  "ekran karti", "rtx", "radeon", "rx ", "anakart", "islemci", "ryzen",
+                                                  "intel core", "ddr4", "ddr5", "ssd", "nvme", "harddisk", "hdd",
+                                                  "flash bellek", "usb bellek", "sd kart", "micro sd", "mouse", "klavye",
+                                                  "yazici", "murekkep", "toner", "playstation", "ps5", "ps4", "xbox",
+                                                  "nintendo", "konsol", "dualsense", "router", "modem", "antivirus",
+                                                  "norton", "kaspersky", "lisans", "webcam")),
+    ("elektronik", "Telefon, TV & elektronik", ("telefon", "kulaklik", "televizyon", "tv", "miniled", "qled", "oled",
+                                                "tablet", "ipad", "sarj aleti", "sarj adaptoru", "adaptor", "kablo", "usb",
+                                                "hoparlor", "kamera", "powerbank", "power bank", "airpods", "earpods",
+                                                "iphone", "galaxy", "buds", "earfun", "tws", "projeksiyon", "bluetooth",
+                                                "kumanda", "watch", "drone", "honor ", "reeder", "redmi", "xiaomi 1",
+                                                "oppo", "realme", "poco ", "infinix", "tecno ", "soundbar", "media box",
+                                                "mediabox", "tv box", "uydu")),
+    ("beyaz", "Beyaz eşya & ev aletleri", ("supurge", "buzdolabi", "dondurucu", "firin", "mikrodalga", "airfryer", "air fryer",
+                                            "fritoz", "blender", "mikser", "dograyici", "kettle", "su isiticisi", "tost",
+                                            "utu", "isitici", "vantilator", "klima", "nemlendirici", "humidifier",
+                                            "hava temizleyici", "espresso", "izgara", "robot ", "aspirator", "davlumbaz",
+                                            "ocak ", "sebil", "termosifon", "kombi ")),
+    ("ev", "Ev, mutfak & mobilya", ("tabure", "sandalye", "fincan", "bardak", "kase", "askil", "kurutmalik", "kurutma askisi",
+                                    "karistirma kabi", "rende", "saklama kabi", "dus basligi", "kahvalti takimi",
+                                    "yemek takimi", "porselen", "seramik", "tencere", "tava", "catal", "kasik", "bicak",
+                                    "termos", "ampul", "lamba", "aydinlatma", "hue ", "nevresim", "battaniye", "havlu",
+                                    "pestemal", "dikis makinesi", "mutfak", "yastik", "yorgan", "hali", "mobilya", "koltuk",
+                                    "yatak", "baza", "dolap", "kitaplik", "masa ", "perde", "ayakkabilik", "vazo", "cerceve")),
+    ("giyim", "Giyim, ayakkabı & aksesuar", ("mont", "kazak", "tisort", "t-shirt", "sweatshirt", "ayakkabi", "boxer", "corap",
+                                              "pijama", "pantolon", "jean", "elbise", "ceket", "canta", "polo", "gomlek",
+                                              "hirka", "esofman", "sneaker", "polar", "kaban", "etek", "saat", "bot ",
+                                              "cizme", "terlik", "sandalet", "gozluk", "cuzdan", "kemer", "bere", "atki")),
     ("spor", "Spor & outdoor", ("spor", "kamp", "cadir", "bisiklet", "fitness", "dambil", "matara", "kosu", "yoga",
-                                "outdoor")),
-    ("market", "Market & gıda", ("cay", "kahve", "biskuvi", "cikolata", "seker", "ice tea", "zeytinyagi", "peynir",
-                                 "kuruyemis", "makarna", "pirinc", "bakliyat", "icecek", "kremasi", "surup",
-                                 "atistirmalik", "kasar", "tavuk", "pilic", "incir", "sut", "tuz", "deterjan", "kapsul", "yumusatici",
-                                 "tuvalet kagidi", "temizleyici", "mendil", "pecete", "bez")),
+                                "outdoor", "uyku tulumu", "pilates", "kondisyon")),
+    ("yapi", "Yapı market & bahçe", ("tornavida", "matkap", "boru kesici", "lokma", "bits", "pense", "anahtar takimi",
+                                     "dewalt", "makita", "einhell", "bosch professional", "alet cantasi", "takim cantasi",
+                                     "testere", "akulu", "taslama", "zimpara", "merdiven", "boya ", "silikon", "vida",
+                                     "dubel", "bahce", "cim bicme", "budama", "tirpan", "sulama", "hortum", "jenerator",
+                                     "kompresor", "priz")),
+    ("oto", "Oto, motosiklet & scooter", ("oto ", "otomobil", "arac ", "lastik", "aku ", "motosiklet", "kask", "scooter",
+                                          "jant", "silecek", "motor yagi", "navigasyon")),
 ]
 KATEGORI_AD = {k: ad for k, ad, _ in KATEGORILER}
 # Aramada birbirinin yerine geçen yazımlar (sade, küçük harf)
@@ -248,6 +293,7 @@ ESANLAMLI = {
     "airfryer": ["air fryer"], "air fryer": ["airfryer"], "tv": ["televizyon"], "televizyon": ["tv"],
     "laptop": ["dizustu"], "notebook": ["laptop"], "kulaklik": ["buds"], "iphone": ["apple iphone"],
 }
+KATEGORI_AD["oyun"] = "Dijital oyunlar"
 KATEGORI_AD["diger"] = "Diğer"
 KOD_DISLA = {"HEPSIBURADA", "HEPSİBURADA", "AMAZON", "TRENDYOL", "İNDİRİM", "INDIRIM", "KUPON", "KAMPANYA",
              "FIRSAT", "FIRSATI", "SEPETTE", "PREMIUM", "PRIME", "BOYNER", "MİGROS", "MIGROS", "PAZARAMA"}
@@ -2111,6 +2157,29 @@ def akakce_karsilastir(baslik, fiyat, gtin=None):
             "eslesme": "model kodu" if en_puan >= 2 else "başlık benzerliği", "ts": int(time.time())}
 
 
+MARKET_API = "https://api.marketfiyati.org.tr/api/"
+MARKET_YOLLAR = ("v2/nearest", "v3/searchByCategories", "v3/price-history")   # yalnızca bu iki uç noktaya aracılık edilir
+
+
+def market_istegi(yol, govde):
+    """Market sekmesi için Market Fiyatı (TÜBİTAK) aracılığı. Tarayıcı doğrudan ulaşamazsa (ör. ağ kısıtı)
+    arayüz isteği buraya gönderir. Yalnızca izinli yollar ve sınırlı alanlar iletilir."""
+    if yol not in MARKET_YOLLAR or not isinstance(govde, dict):
+        raise ValueError("Geçersiz market isteği")
+    izinli = {"latitude", "longitude", "distance", "pages", "size", "depots", "offer_discount", "menu_category",
+              "main_category", "market_names", "uniqueId"}
+    temiz = {k: v for k, v in govde.items() if k in izinli}
+    if "size" in temiz:
+        temiz["size"] = max(1, min(int(temiz["size"]), 25))
+    if isinstance(temiz.get("depots"), list):
+        temiz["depots"] = [str(x)[:40] for x in temiz["depots"][:80]]
+    istek = urllib.request.Request(MARKET_API + yol, data=json.dumps(temiz).encode("utf-8"), method="POST",
+                                   headers={"Content-Type": "application/json", "Accept": "application/json",
+                                            "User-Agent": "KasimFirsatlari/" + SURUM})
+    with urllib.request.urlopen(istek, timeout=25) as yanit:
+        return json.loads(yanit.read().decode("utf-8", "replace"))
+
+
 def oyun_cek():
     istek = urllib.request.Request(OYUN_URL, headers={"User-Agent": "KasimFirsatlari/" + SURUM, "Accept": "application/json"})
     with urllib.request.urlopen(istek, timeout=25) as yanit:
@@ -2991,7 +3060,10 @@ class Depo:
             d["daha_once_ucuz"] = bool(gk and g.get("fiyat") and gk.get("en_dusuk_onceki") is not None
                                        and gk["en_dusuk_onceki"] <= g["fiyat"] * 1.005)
             d.update(fiyat_bilgisi(g, gk if gk and gk.get("fiyat") else None))
-            d["kategori"] = g.get("kategori") or "diger"
+            # Kategori her gösterimde güncel kurallarla yeniden hesaplanır: kurallar düzelince eski kayıtlar da düzelir
+            d["kategori"] = ("oyun" if g.get("kanal") == OYUN else
+                             kategori_bul(g.get("magaza_basligi") or g.get("baslik") or "") if g.get("tur") == "urun"
+                             else g.get("kategori") or "diger")
             d["kategori_ad"] = KATEGORI_AD.get(d["kategori"], "Diğer")
             d["takip"] = takip_eslesen(self.ayarlar.get("takip") or [], g)
             d["alarm"] = d["alarm_kurulu"] = None
@@ -3637,6 +3709,16 @@ class Isleyici(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": self.depo.deneme_bildirimi()})
             except ValueError as e:
                 return self._json(400, {"hata": str(e)})
+        if yol == "/api/market":
+            try:
+                veri = json.loads(govde or b"{}")
+                if not isinstance(veri, dict):
+                    raise ValueError("Geçersiz istek")
+                return self._json(200, market_istegi(str(veri.get("yol", "")), veri.get("govde")))
+            except ValueError as e:
+                return self._json(400, {"hata": str(e) or "Geçersiz istek"})
+            except Exception as e:
+                return self._json(502, {"hata": "Market Fiyatı'na ulaşılamadı: " + hata_metni(e)})
         if yol == "/api/ayarlar":
             try:
                 veri = json.loads(govde or b"{}")
@@ -4196,7 +4278,7 @@ const nf = new Intl.NumberFormat("tr-TR", {maximumFractionDigits: 2});
 const kf = new Intl.NumberFormat("tr-TR", {notation: "compact", maximumFractionDigits: 1});
 const tl = v => v == null ? "" : nf.format(v) + " TL";
 
-const SEKMELER = [["kac","🔥 Kaçırılmaz"],["one","Öne çıkanlar"],["ucuz","Ucuzlayanlar"],["tum","Tüm ürünler"],["kupon","Kupon & kampanya"],["takip","Takibim"],["takvim","Takvim"],["ayar","Ayarlar"]];
+const SEKMELER = [["kac","🔥 Kaçırılmaz"],["one","Öne çıkanlar"],["ucuz","Ucuzlayanlar"],["tum","Tüm ürünler"],["kupon","Kupon & kampanya"],["market","🛒 Market"],["takip","Takibim"],["takvim","Takvim"],["ayar","Ayarlar"]];
 const ROZET = {
   dip:["Dip fiyat","r-yesil"], kayit_dusuk:["Kaydettiğim en düşük","r-yesil"], ikinci_el:["2. el","r-sari"],
   stok_az:["Stok az","r-kirmizi"], sepette:["Fiyat sepette düşer","r-mavi"], kupon:["Kupon / kod","r-mavi"],
@@ -4274,7 +4356,7 @@ function ust(){
   $("#sayac").style.display = sy ? "" : "none";
 }
 
-const KATEGORI = [["elektronik","Elektronik"],["ev","Ev & mutfak"],["market","Market & gıda"],["kozmetik","Kozmetik & bakım"],["giyim","Giyim, ayakkabı & aksesuar"],["bebek","Anne, bebek & oyuncak"],["spor","Spor & outdoor"],["yapi","Yapı market & oto"],["diger","Diğer"]];
+const KATEGORI = [["elektronik","Telefon, TV & elektronik"],["bilgisayar","Bilgisayar, oyun & donanım"],["beyaz","Beyaz eşya & ev aletleri"],["ev","Ev, mutfak & mobilya"],["gida","Gıda & içecek"],["temizlik","Temizlik & kâğıt ürünleri"],["kozmetik","Kişisel bakım & kozmetik"],["giyim","Giyim, ayakkabı & aksesuar"],["bebek","Anne, bebek & oyuncak"],["spor","Spor & outdoor"],["yapi","Yapı market & bahçe"],["oto","Oto, motosiklet & scooter"],["evcil","Evcil hayvan"],["oyun","Dijital oyunlar"],["diger","Diğer"]];
 function kayitlilar(){ try { return JSON.parse(localStorage.getItem("kf-kayitli") || "{}") || {}; } catch (e) { return S.kayitliYedek || {}; } }
 function kayitliYaz(k){ S.kayitliYedek = k; try { localStorage.setItem("kf-kayitli", JSON.stringify(k)); } catch (e) {} }
 
@@ -4987,11 +5069,282 @@ function qrCiz(){
   document.head.appendChild(sc);
 }
 
+// ---------------------------------------------------------------------------
+// 🛒 Market sekmesi: zincir marketlerin indirimli ürünleri (kaynak: Market Fiyatı · TÜBİTAK, marketfiyati.org.tr)
+// Bu sekmenin ürünleri diğer sekmelere karışmaz; kendi kategorileri, kendi şehir seçimi vardır.
+// ---------------------------------------------------------------------------
+const MF_API = "https://api.marketfiyati.org.tr/api/";
+const ILLER = [[1,"Adana",37.0000,35.3213],[2,"Adıyaman",37.7648,38.2786],[3,"Afyonkarahisar",38.7507,30.5567],[4,"Ağrı",39.7191,43.0503],[5,"Amasya",40.6499,35.8353],[6,"Ankara",39.9334,32.8597],[7,"Antalya",36.8969,30.7133],[8,"Artvin",41.1828,41.8183],[9,"Aydın",37.8560,27.8416],[10,"Balıkesir",39.6484,27.8826],[11,"Bilecik",40.1451,29.9799],[12,"Bingöl",38.8847,40.4939],[13,"Bitlis",38.4006,42.1095],[14,"Bolu",40.7350,31.6061],[15,"Burdur",37.7203,30.2906],[16,"Bursa",40.1885,29.0610],[17,"Çanakkale",40.1553,26.4142],[18,"Çankırı",40.6013,33.6134],[19,"Çorum",40.5506,34.9556],[20,"Denizli",37.7765,29.0864],[21,"Diyarbakır",37.9144,40.2306],[22,"Edirne",41.6771,26.5557],[23,"Elazığ",38.6810,39.2264],[24,"Erzincan",39.7500,39.5000],[25,"Erzurum",39.9043,41.2679],[26,"Eskişehir",39.7767,30.5206],[27,"Gaziantep",37.0662,37.3833],[28,"Giresun",40.9128,38.3895],[29,"Gümüşhane",40.4603,39.4814],[30,"Hakkari",37.5744,43.7408],[31,"Hatay",36.2023,36.1613],[32,"Isparta",37.7648,30.5566],[33,"Mersin",36.8000,34.6333],[34,"İstanbul",41.0082,28.9784],[35,"İzmir",38.4237,27.1428],[36,"Kars",40.6013,43.0975],[37,"Kastamonu",41.3887,33.7827],[38,"Kayseri",38.7312,35.4787],[39,"Kırklareli",41.7333,27.2167],[40,"Kırşehir",39.1425,34.1709],[41,"Kocaeli",40.7654,29.9408],[42,"Konya",37.8746,32.4932],[43,"Kütahya",39.4167,29.9833],[44,"Malatya",38.3552,38.3095],[45,"Manisa",38.6191,27.4289],[46,"Kahramanmaraş",37.5858,36.9371],[47,"Mardin",37.3212,40.7245],[48,"Muğla",37.2153,28.3636],[49,"Muş",38.9462,41.7539],[50,"Nevşehir",38.6939,34.6857],[51,"Niğde",37.9667,34.6833],[52,"Ordu",40.9839,37.8764],[53,"Rize",41.0201,40.5234],[54,"Sakarya",40.7569,30.3781],[55,"Samsun",41.2928,36.3313],[56,"Siirt",37.9333,41.9500],[57,"Sinop",42.0231,35.1531],[58,"Sivas",39.7477,37.0179],[59,"Tekirdağ",40.9833,27.5167],[60,"Tokat",40.3167,36.5500],[61,"Trabzon",41.0015,39.7178],[62,"Tunceli",39.1079,39.5401],[63,"Şanlıurfa",37.1591,38.7969],[64,"Uşak",38.6823,29.4082],[65,"Van",38.4891,43.4089],[66,"Yozgat",39.8181,34.8147],[67,"Zonguldak",41.4564,31.7987],[68,"Aksaray",38.3687,34.0370],[69,"Bayburt",40.2552,40.2249],[70,"Karaman",37.1759,33.2287],[71,"Kırıkkale",39.8468,33.5153],[72,"Batman",37.8812,41.1351],[73,"Şırnak",37.5164,42.4611],[74,"Bartın",41.6344,32.3375],[75,"Ardahan",41.1105,42.7022],[76,"Iğdır",39.9237,44.0450],[77,"Yalova",40.6500,29.2667],[78,"Karabük",41.2061,32.6204],[79,"Kilis",36.7184,37.1212],[80,"Osmaniye",37.0742,36.2464],[81,"Düzce",40.8438,31.1565]];
+const M_KATEGORI = [["Meyve ve Sebze","Meyve & sebze"],["Et, Tavuk ve Balık","Et, tavuk & balık"],["Süt Ürünleri ve Kahvaltılık","Süt & kahvaltılık"],["Temel Gıda","Temel gıda"],["İçecek","İçecek"],["Atıştırmalık ve Tatlı","Atıştırmalık & tatlı"],["Temizlik Ürünleri","Temizlik"],["Kişisel Bakım","Kişisel bakım"],["Diğer Ürünler","Diğer"]];
+const M_ZINCIR = {migros:"Migros", carrefour:"CarrefourSA", bim:"BİM", a101:"A101", sok:"ŞOK", tarim_kredi:"Tarım Kredi", hakmar:"Hakmar"};
+const M_ONBELLEK_MS = 30 * 60 * 1000;
+S.m = {il:42, yaricap:10, kat:"hepsi", zincir:"hepsi", sirala:"gercek", min:0, ara:"", konum:null, sisikGizle:true};
+try { const k = JSON.parse(localStorage.getItem("kf-market") || "null"); if (k) Object.assign(S.m, k); } catch (e) {}
+if (!ILLER.some(x => x[0] === S.m.il)) S.m.il = 42;
+if (S.m.surum !== 2) { S.m.surum = 2; S.m.sirala = "gercek"; if (S.m.sisikGizle == null) S.m.sisikGizle = true; }
+S.mv = {liste:{}, depo:{}, yuk:null, gecmis:{}, kuyruk:[], calisan:0, limit:60};
+function mSakla(){ try { localStorage.setItem("kf-market", JSON.stringify(S.m)); } catch (e) {} }
+function mKonum(){
+  if (S.m.konum) return {lat:S.m.konum.lat, lon:S.m.konum.lon, ad:"Konumum", anahtar:`k${S.m.konum.lat.toFixed(3)},${S.m.konum.lon.toFixed(3)}`};
+  const il = ILLER.find(x => x[0] === S.m.il) || ILLER[41];
+  return {lat:il[2], lon:il[3], ad:il[1], anahtar:"il" + il[0]};
+}
+function mAnahtar(){ const k = mKonum(); return [k.anahtar, S.m.yaricap, S.m.kat, S.m.zincir].join("|"); }
+
+async function mfIstek(yol, govde){
+  // Önce doğrudan (Market Fiyatı herkese açık istek kabul ediyor); olmazsa bilgisayardaki program aracılığıyla.
+  const zaman = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
+  try {
+    const r = await fetch(MF_API + yol, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(govde), signal:zaman(20000)});
+    if (r.ok) return await r.json();
+    if (r.status >= 400 && r.status < 500) throw new Error("Market Fiyatı isteği kabul etmedi (" + r.status + ")");
+  } catch (e) {
+    if (S.veri && (S.veri.statik || S.veri.onizleme)) throw e;
+  }
+  const r = await fetch("/api/market", {method:"POST", headers:{"Content-Type":"application/json", "X-Kasim":"1"}, body:JSON.stringify({yol, govde}), signal:zaman(40000)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.hata || ("Market Fiyatı'na ulaşılamadı (" + r.status + ")"));
+  return j;
+}
+
+function mUrun(c){
+  const depolar = (c.productDepotInfoList || []).filter(d => d && d.price != null);
+  if (!depolar.length) return null;
+  // İndirimli şubeler arasından en ucuzu; indirimli yoksa en ucuzu
+  const ind = depolar.filter(d => d.discount);
+  const d = (ind.length ? ind : depolar).slice().sort((a, b) => a.price - b.price)[0];
+  const eski = d.discountlessPrice && d.discountlessPrice > d.price ? d.discountlessPrice : null;
+  let oran = d.discountRatio != null ? Math.round(d.discountRatio * 100) : null;
+  if (oran == null && eski) oran = Math.round((1 - d.price / eski) * 100);
+  if (!d.discount && !eski) return null;
+  return {id:String(c.id), ad:c.title || "", marka:c.brand || "", resim:c.imageUrl || "", birim:c.refinedVolumeOrWeight || c.refinedQuantityUnit || "",
+          menu:c.menu_category || "", ana:c.main_category || "", fiyat:d.price, eski, oran, birimFiyat:d.unitPrice || "", birimDeger:d.unitPriceValue,
+          zincir:d.marketAdi || "", depo:d.depotId || "", sube:d.depotName || "", zaman:d.indexTime || "", promo:d.promotionText || "", subeSayisi:depolar.length};
+}
+
+async function mDepolar(){
+  const k = mKonum(), a = k.anahtar + "|" + S.m.yaricap;
+  const c = S.mv.depo[a];
+  if (c && Date.now() - c.t < 6 * 3600 * 1000) return c.idler;
+  const n = await mfIstek("v2/nearest", {latitude:k.lat, longitude:k.lon, distance:S.m.yaricap});
+  const idler = (Array.isArray(n) ? n : []).map(x => x.id).filter(Boolean);
+  S.mv.depo[a] = {t:Date.now(), idler, zincirler:[...new Set((Array.isArray(n) ? n : []).map(x => x.marketName))]};
+  return idler;
+}
+
+async function mYukle(devam){
+  const anahtar = mAnahtar();
+  let L = S.mv.liste[anahtar];
+  if (!devam && L && !L.hata && Date.now() - L.t < M_ONBELLEK_MS) return;
+  if (S.mv.yuk === anahtar) return;
+  if (!L || !devam) L = S.mv.liste[anahtar] = {t:Date.now(), urunler:[], idler:{}, sayfa:0, toplam:null, zincirSay:null, hata:null};
+  S.mv.yuk = anahtar; L.hata = null; if (S.sekme === "market") marketCiz();
+  try {
+    const depots = await mDepolar();
+    if (!depots.length) throw new Error("Bu konumun " + S.m.yaricap + " km çevresinde kayıtlı market şubesi bulunamadı. Yarıçapı büyütün.");
+    const hedef = L.sayfa + (S.m.kat === "hepsi" && S.m.zincir === "hepsi" ? 8 : 20);   // ~200 / ~500 ürün
+    while (L.sayfa < hedef && (L.toplam == null || L.sayfa * 25 < L.toplam)) {
+      const grup = [];
+      for (let i = 0; i < 4 && L.sayfa + i < hedef && (L.toplam == null || (L.sayfa + i) * 25 < L.toplam); i++) {
+        const g = {pages:L.sayfa + i, size:25, offer_discount:["true"], depots};
+        if (S.m.kat !== "hepsi") g.menu_category = [S.m.kat];
+        if (S.m.zincir !== "hepsi") g.market_names = [S.m.zincir];
+        grup.push(mfIstek("v3/searchByCategories", g));
+        if (L.toplam == null) break;   // ilk sayfa toplamı öğrenmek için tek başına
+      }
+      const sonuclar = await Promise.all(grup);
+      for (const r of sonuclar) {
+        if (L.toplam == null) {
+          L.toplam = r.numberOfFound || 0;
+          const f = (r.facetMap || {}).market_names || (r.facetMap || {}).offer_market;
+          if (Array.isArray(f) && S.m.zincir === "hepsi") L.zincirSay = f;
+        }
+        (r.content || []).forEach(c => { const u = mUrun(c); if (u && !L.idler[u.id]) { L.idler[u.id] = 1; L.urunler.push(u); } });
+        L.sayfa++;
+      }
+      if (S.mv.liste[anahtar] !== L) return;
+      if (S.sekme === "market" && mAnahtar() === anahtar) marketCiz();
+    }
+    L.t = Date.now();
+  } catch (e) {
+    L.hata = (e && e.name === "AbortError") ? "Market Fiyatı yanıt vermedi (zaman aşımı). Biraz sonra tekrar deneyin." : String((e && e.message) || e);
+  } finally {
+    if (S.mv.yuk === anahtar) S.mv.yuk = null;
+    if (S.sekme === "market") marketCiz();
+  }
+}
+
+function mSlug(s){ return sadeJS(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
+// --- Gerçek indirim kontrolü: ürünün aynı marketteki son 90 günlük fiyatı (Market Fiyatı fiyat geçmişi) ---
+function mGecmisAnahtar(u){ return u.id + "|" + u.depo; }
+function mGecmisOzet(u, h){
+  const seri = (Array.isArray(h) ? h : []);
+  const s = seri.find(x => x.name === u.zincir) || seri[0];
+  const v = s && Array.isArray(s.series) ? s.series.filter(p => p && typeof p.value === "number" && p.value > 0).map(p => ({t:p.name, v:p.value})) : [];
+  if (v.length < 7) return {durum:"az", gun:v.length};
+  // Şu anki fiyatın başladığı gün: sondan geriye aynı fiyat sürdükçe
+  let k = v.length - 1;
+  while (k > 0 && Math.abs(v[k - 1].v - v[v.length - 1].v) < 0.01) k--;
+  const once = v.slice(0, k);
+  if (once.length < 7) return {durum:"az", gun:v.length};
+  const sirali = once.map(x => x.v).sort((a, b) => a - b);
+  const medyan = sirali[Math.floor(sirali.length / 2)];
+  let min = once[0]; once.forEach(x => { if (x.v < min.v) min = x; });
+  return {durum:"ok", medyan, min:min.v, minTarih:min.t, max:sirali[sirali.length - 1], gun:once.length, bas:v[k].t};
+}
+function mKarar(u){
+  const g = S.mv.gecmis[mGecmisAnahtar(u)];
+  if (!g) return {durum:"bekliyor"};
+  if (g.durum !== "ok") return g;
+  const gercek = Math.round((1 - u.fiyat / g.medyan) * 100);
+  const karar = u.fiyat <= g.min + 0.01 ? "dip" : gercek >= 5 ? "gercek" : "sisik";
+  return Object.assign({}, g, {gercek, karar, eskiSisik: !!(u.eski && u.eski > g.max * 1.02)});
+}
+function mTarih(t){ try { return new Date(t + "T12:00:00").toLocaleDateString("tr-TR", {day:"numeric", month:"long"}); } catch (e) { return t; } }
+function mKuyrugaAl(liste){
+  liste.forEach(u => { const a = mGecmisAnahtar(u); if (u.depo && !S.mv.gecmis[a] && !S.mv.kuyruk.some(x => mGecmisAnahtar(x) === a)) S.mv.kuyruk.push(u); });
+  for (let i = S.mv.calisan; i < 4; i++) mIsci();
+}
+async function mIsci(){
+  if (!S.mv.kuyruk.length) return;
+  S.mv.calisan++;
+  while (S.mv.kuyruk.length) {
+    const u = S.mv.kuyruk.shift(), a = mGecmisAnahtar(u);
+    if (S.mv.gecmis[a]) continue;
+    try { S.mv.gecmis[a] = mGecmisOzet(u, await mfIstek("v3/price-history", {uniqueId:u.id, depots:[u.depo]})); }
+    catch (e) { S.mv.gecmis[a] = {durum:"hata"}; }
+    mCizErtele();
+  }
+  S.mv.calisan--;
+}
+function mCizErtele(){ if (S.mv.cizZaman) return; S.mv.cizZaman = setTimeout(() => { S.mv.cizZaman = null; const ae = document.activeElement; if (S.sekme === "market" && !(ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m"))) marketCiz(); }, 500); }
+
+function mSlug(s){ return sadeJS(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
+function mKart(u){
+  const res = link(u.resim);
+  const k = mKarar(u);
+  const kontrollu = k.durum === "ok";
+  const gosterOran = kontrollu ? Math.max(0, k.gercek) : u.oran;
+  const oran = gosterOran != null && !(kontrollu && k.karar === "sisik")
+    ? `<div class="${gosterOran >= 30 ? "oran" : "oran orta"}" title="${kontrollu ? "Son 90 günde çoğunlukla satıldığı fiyata göre" : "Marketin ilan ettiği oran"}">%${gosterOran}<small>${kontrollu ? "gerçek" : "indirim"}</small></div>` : "";
+  const rozet = [];
+  if (kontrollu) {
+    if (k.karar === "dip") rozet.push(`<span class="rozet r-yesil">✅ Son ${k.gun} günün en düşük fiyatı · normalde ~${tl(k.medyan)}</span>`);
+    else if (k.karar === "gercek") {
+      rozet.push(`<span class="rozet r-yesil">✅ Gerçek indirim · normalde ~${tl(k.medyan)}</span>`);
+      rozet.push(`<span class="rozet r-sari">Daha önce ${tl(k.min)}’ye düştü (${esc(mTarih(k.minTarih))})</span>`);
+    } else rozet.push(`<span class="rozet r-kirmizi">⚠️ Şişirilmiş indirim: son ${k.gun} günde çoğunlukla ${tl(k.medyan)}’ye satılmış</span>`);
+    if (k.eskiSisik) rozet.push(`<span class="rozet r-sari">Üstü çizili ${tl(u.eski)} son ${k.gun} günde hiç görülmedi</span>`);
+    if (u.oran != null && Math.abs(u.oran - k.gercek) >= 3) rozet.push(`<span class="rozet">Marketin ilan ettiği: %${u.oran}</span>`);
+  } else if (k.durum === "bekliyor") rozet.push(`<span class="rozet">⏳ Fiyat geçmişi kontrol ediliyor…</span>`);
+  else if (k.durum === "az") rozet.push(`<span class="rozet r-sari">Fiyat geçmişi yetersiz (yeni ürün) · oranı marketin beyanı</span>`);
+  else rozet.push(`<span class="rozet r-sari">Fiyat geçmişi okunamadı · oranı marketin beyanı</span>`);
+  if (u.promo) rozet.push(`<span class="rozet r-mavi">${esc(u.promo)}</span>`);
+  if ((u.oran || 0) >= 70 && !kontrollu) rozet.push(`<span class="rozet r-kirmizi">🧐 Kontrol et: indirim oranı çok yüksek</span>`);
+  if (u.zaman) rozet.push(`<span class="rozet">Fiyat zamanı: ${esc(u.zaman)}</span>`);
+  return `<article class="kart${kontrollu && k.karar === "sisik" ? " soluk" : ""}">
+    ${res ? `<img class="resim" src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="var d=document.createElement('div');d.className='resim bos';this.replaceWith(d)">` : `<div class="resim bos">${esc(M_ZINCIR[u.zincir] || u.zincir)}</div>`}
+    <div class="govde">
+      <div class="kbas"><div class="kbaslik">${esc(u.ad)}</div>${oran}</div>
+      <div class="fiyat">${tl(u.fiyat)}${u.eski ? `<s>${tl(u.eski)}</s>` : ""}${u.birimFiyat ? ` <small>· ${esc(u.birimFiyat)}</small>` : ""}</div>
+      <div class="meta"><b>${esc(M_ZINCIR[u.zincir] || u.zincir)}</b> · ${esc(u.sube)}</div>
+      <div class="meta">${esc([u.menu, u.ana].filter(Boolean).join(" › "))}</div>
+      ${rozet.length ? `<div class="rozetler">${rozet.join("")}</div>` : ""}
+      <div class="eylem"><a class="ana" href="https://marketfiyati.org.tr/detay/${encodeURIComponent(u.id)}/${mSlug(u.ad)}" target="_blank" rel="noopener noreferrer">Market Fiyatı’nda gör</a></div>
+    </div>
+  </article>`;
+}
+
+function marketCiz(){
+  if (S.sekme !== "market") return;
+  const anahtar = mAnahtar(), L = S.mv.liste[anahtar], k = mKonum();
+  if (!L || (!L.hata && Date.now() - L.t > M_ONBELLEK_MS && S.mv.yuk !== anahtar)) { setTimeout(() => mYukle(false), 0); }
+  const yukleniyor = S.mv.yuk === anahtar;
+  let d = L ? L.urunler.slice() : [];
+  const q = sadeJS(S.m.ara.trim());
+  if (q) d = d.filter(u => sadeJS(u.ad + " " + u.marka + " " + u.ana).includes(q));
+  const ko = u => { const k = mKarar(u); return k.durum === "ok" ? k.gercek : (u.oran || 0); };
+  if (S.m.min > 0) d = d.filter(u => ko(u) >= S.m.min);
+  const sisikSay = d.filter(u => mKarar(u).karar === "sisik").length;
+  if (S.m.sisikGizle) d = d.filter(u => mKarar(u).karar !== "sisik");
+  const srt = {gercek:(a, b) => ko(b) - ko(a), indirim:(a, b) => (b.oran || 0) - (a.oran || 0), kazanc:(a, b) => ((b.eski || b.fiyat) - b.fiyat) - ((a.eski || a.fiyat) - a.fiyat),
+               ucuz:(a, b) => a.fiyat - b.fiyat, birim:(a, b) => (a.birimDeger ?? 1e12) - (b.birimDeger ?? 1e12)}[S.m.sirala] || (() => 0);
+  d.sort(srt);
+  const katCip = [`<button type="button" class="cip kat" data-mkat="hepsi" aria-pressed="${S.m.kat === "hepsi"}">Tüm market kategorileri</button>`]
+    .concat(M_KATEGORI.map(([v, a]) => `<button type="button" class="cip kat" data-mkat="${esc(v)}" aria-pressed="${S.m.kat === v}">${esc(a)}</button>`)).join("");
+  const zs = (L && L.zincirSay) || [];
+  const zincirCip = [`<button type="button" class="cip" data-mzincir="hepsi" aria-pressed="${S.m.zincir === "hepsi"}">Tüm marketler</button>`]
+    .concat(Object.entries(M_ZINCIR).map(([v, a]) => { const z = zs.find(x => x.name === v); return `<button type="button" class="cip" data-mzincir="${v}" aria-pressed="${S.m.zincir === v}">${esc(a)}${z ? " " + z.count : ""}</button>`; })).join("");
+  const ilSecenek = ILLER.map(([no, ad]) => `<option value="${no}" ${!S.m.konum && S.m.il === no ? "selected" : ""}>${String(no).padStart(2, "0")} · ${esc(ad)}</option>`).join("");
+  const kalan = L && L.toplam != null ? Math.max(0, L.toplam - L.sayfa * 25) : 0;
+  let govde;
+  if (L && L.hata && !d.length) govde = `<div class="bos-durum">${esc(L.hata)}<br><br><button type="button" class="ikincil" id="mYenile">Tekrar dene</button></div>`;
+  else if (!d.length) govde = `<div class="bos-durum">${yukleniyor || !L ? "Market indirimleri getiriliyor…" : q || S.m.min ? "Bu filtreye uyan indirimli ürün yok." : "Bu konumda şu an indirimli ürün bulunamadı. Yarıçapı büyütmeyi ya da başka kategoriyi deneyin."}</div>`;
+  else govde = d.slice(0, S.mv.limit).map(mKart).join("")
+    + (d.length > S.mv.limit ? `<button type="button" class="daha" id="mGoster">Daha fazla göster (${d.length - S.mv.limit})</button>` : "")
+    + (d.length > S.mv.limit ? "" : yukleniyor ? `<div class="bos-durum">Yükleniyor…</div>` : kalan > 0 ? `<button type="button" class="daha" id="mDaha">Daha fazla yükle (${kalan} ürün daha var)</button>` : "")
+    + (L && L.hata ? `<div class="not">${esc(L.hata)}</div>` : "");
+  const odak = document.activeElement && document.activeElement.id === "mAra";
+  const pos = odak ? document.activeElement.selectionStart : null;
+  $("#icerik").innerHTML = `
+    <div class="filtre">
+      <div class="satir">
+        <select id="mIl" aria-label="Şehir">${S.m.konum ? `<option value="konum" selected>📍 Konumum</option>` : ""}${ilSecenek}</select>
+        <select id="mYaricap" aria-label="Arama yarıçapı">${[3,5,10,20].map(v => `<option value="${v}" ${S.m.yaricap === v ? "selected" : ""}>${v} km çevre</option>`).join("")}</select>
+        <button type="button" class="ikincil" id="mKonum">📍 Konumumu kullan</button>
+      </div>
+      <input type="search" id="mAra" placeholder="Market ürünlerinde ara (ör. çay, deterjan)" value="${esc(S.m.ara)}" autocomplete="off">
+      <div class="cipler">${katCip}</div>
+      <div class="cipler">${zincirCip}</div>
+      <div class="satir">
+        <select id="mMin" aria-label="En az indirim">${[[0,"Tüm oranlar"],[10,"%10 ve üstü"],[20,"%20 ve üstü"],[30,"%30 ve üstü"],[50,"%50 ve üstü"]].map(([v,a]) => `<option value="${v}" ${S.m.min === v ? "selected" : ""}>${a}</option>`).join("")}</select>
+        <label class="anahtar"><input type="checkbox" id="mSisik" ${S.m.sisikGizle ? "checked" : ""}> Şişirilmiş indirimleri gizle${sisikSay && S.m.sisikGizle ? ` (${sisikSay})` : ""}</label>
+        <select id="mSirala" aria-label="Sıralama">${[["gercek","En yüksek gerçek indirim"],["indirim","Marketin ilan ettiği indirim %"],["kazanc","En çok TL kazanç"],["ucuz","En ucuz"],["birim","En ucuz birim fiyat"]].map(([v,a]) => `<option value="${v}" ${S.m.sirala === v ? "selected" : ""}>${a}</option>`).join("")}</select>
+      </div>
+    </div>
+    <div class="not">${esc(k.ad)} · ${S.m.yaricap} km çevresindeki şubeler${L && L.toplam != null ? ` · ${L.toplam} indirimli ürün, ${L.urunler.length} tanesi yüklendi${d.length !== L.urunler.length ? `, ${d.length} tanesi filtreye uyuyor` : ""}` : ""}${yukleniyor ? " · yükleniyor…" : ""}.
+      Kaynak: Market Fiyatı (TÜBİTAK). Fiyatlar marketlerin bildirdiği şube fiyatlarıdır; kasada farklı olabilir.
+      “Gerçek indirim”: ürünün aynı markette son 90 günde çoğunlukla satıldığı fiyata göre hesaplanır; üstü çizili fiyat bu dönemde görülmediyse uyarılır. Sıralama yüklenen ürünler içinde yapılır. İndirim bilgisini şu an daha çok Migros, CarrefourSA ve BİM paylaşıyor.
+      Bu sekmedeki ürünler diğer sekmelere karışmaz.</div>
+    ${govde}`;
+  if (odak) { const a = $("#mAra"); a.focus(); try { a.setSelectionRange(pos, pos); } catch (e) {} }
+  // Ekranda görünen (ve sıradaki birkaç) ürünün fiyat geçmişini kontrol et
+  if (L) mKuyrugaAl(d.slice(0, S.mv.limit + 20));
+}
+
+function mDegisti(){ mSakla(); S.mv.limit = 60; S.mv.kuyruk = []; window.scrollTo(0, 0); marketCiz(); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t || S.sekme !== "market") return;
+  if (t.dataset.mkat) { S.m.kat = t.dataset.mkat; mDegisti(); }
+  else if (t.dataset.mzincir) { S.m.zincir = t.dataset.mzincir; mDegisti(); }
+  else if (t.id === "mDaha") mYukle(true);
+  else if (t.id === "mGoster") { S.mv.limit += 60; marketCiz(); }
+  else if (t.id === "mYenile") { delete S.mv.liste[mAnahtar()]; marketCiz(); }
+  else if (t.id === "mKonum") {
+    if (!navigator.geolocation) return toast("Bu tarayıcı konum vermiyor; listeden şehir seçin");
+    toast("Konum alınıyor…");
+    navigator.geolocation.getCurrentPosition(p => { S.m.konum = {lat:p.coords.latitude, lon:p.coords.longitude}; mDegisti(); },
+      () => toast("Konum alınamadı (izin verilmedi ya da bağlantı güvenli değil); listeden şehir seçin"), {timeout:15000, maximumAge:600000});
+  }
+});
+document.addEventListener("change", e => {
+  const t = e.target; if (S.sekme !== "market") return;
+  if (t.id === "mIl") { if (t.value !== "konum") { S.m.il = +t.value; S.m.konum = null; } mDegisti(); }
+  else if (t.id === "mYaricap") { S.m.yaricap = +t.value; mDegisti(); }
+  else if (t.id === "mMin") { S.m.min = +t.value; mSakla(); marketCiz(); }
+  else if (t.id === "mSirala") { S.m.sirala = t.value; mSakla(); marketCiz(); }
+  else if (t.id === "mSisik") { S.m.sisikGizle = t.checked; mSakla(); marketCiz(); }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "mAra") { S.m.ara = e.target.value; mSakla(); marketCiz(); }
+});
+
 function ciz(){ cizGovde(); detayCiz(); canliGozle(); }
 function cizGovde(){
   ust(); navCiz();
   if (S.sekme === "takvim") takvimCiz();
   else if (S.sekme === "takip") { if (document.activeElement && ["takipKelime", "urunLink"].includes(document.activeElement.id)) return; takipCiz(); }
+  else if (S.sekme === "market") { const ae = document.activeElement; if (ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m")) return; marketCiz(); }
   else if (S.sekme === "ayar") { if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".ayar")) return; ayarCiz(); qrCiz(); }
   else {
     if (document.activeElement && document.activeElement.id && document.activeElement.id.startsWith("hedefTL-")) return;

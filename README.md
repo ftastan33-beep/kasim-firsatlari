@@ -98,3 +98,37 @@ Kurulum: `YAYIN-KURULUM.txt` → `Yayin-Kur.bat`. Komutlar: `--yayin-kur`, `--ya
 - **Bağlantı başka ürüne gidiyorsa:** doğrulayıcı ve "kontrol et" mağaza sayfasındaki ürün adını başlıkla karşılaştırır;
   farklı modelse kart "❌ Bağlantı başka bir ürüne gidiyor" olarak işaretlenir, o ürünün görseli/barkodu karta yazılmaz.
 - Eski sürümün yanlış eşleştirdiği Akakçe kayıtları ve fiyat geçmişi girdileri otomatik ayıklanır.
+
+## 3.3 — Market indirimleri ve ayrı kategoriler
+
+**🛒 Market sekmesi:** BİM, A101, ŞOK, Migros, CarrefourSA, Tarım Kredi ve Hakmar şubelerindeki indirimli ürünler.
+Kaynak: Market Fiyatı (TÜBİTAK, marketfiyati.org.tr) — marketlerin kendi bildirdiği şube fiyatları.
+
+- **81 il:** listeden il seçilir (il merkezi çevresi) ya da “📍 Konumumu kullan” ile bulunduğunuz yer; yarıçap 3–20 km.
+- Market kategorileri ayrıdır: meyve-sebze, et-tavuk-balık, süt-kahvaltılık, temel gıda, içecek, atıştırmalık, temizlik,
+  kişisel bakım, diğer. Market zinciri filtresi, arama, en az indirim ve sıralama (indirim %, TL kazanç, fiyat, birim fiyat).
+- Bu sekmenin ürünleri diğer sekmelere **karışmaz**; Telegram/Akakçe fırsatları da Market sekmesine girmez.
+- Liste açıldığında canlı çekilir, 30 dakika önbellekte tutulur. Tarayıcı doğrudan ulaşamazsa program aracılık eder (`/api/market`).
+- %70 ve üstü indirimler “Kontrol et” olarak işaretlenir. Şu an indirim bilgisini daha çok Migros, CarrefourSA ve BİM paylaşıyor.
+
+**Kategoriler yeniden düzenlendi:** “Market & gıda” ve “Elektronik” gibi karışan gruplar ayrıldı:
+Telefon-TV & elektronik · Bilgisayar, oyun & donanım · Beyaz eşya & ev aletleri · Ev, mutfak & mobilya · Gıda & içecek ·
+Temizlik & kâğıt ürünleri · Kişisel bakım & kozmetik · Giyim · Anne-bebek & oyuncak · Spor · Yapı market & bahçe ·
+Oto, motosiklet & scooter · Evcil hayvan · Dijital oyunlar. Örnek düzeltmeler: bulaşık makinesi tableti artık “Elektronik” değil
+“Temizlik”; çay makineli su sebili “Gıda” değil “Beyaz eşya”; kağıt havlu “Ev” değil “Temizlik”; anakart, RAM, işlemci,
+yazıcı “Diğer” değil “Bilgisayar”. Kategori her gösterimde yeniden hesaplandığı için eski kayıtlar da kendiliğinden düzelir.
+
+### Gerçek indirim kontrolü (Market sekmesi)
+
+Her ürün için Market Fiyatı'nın **son 90 günlük fiyat geçmişi** (aynı market) okunur; marketin üstü çizili fiyatı yerine
+ürünün bu dönemde **çoğunlukla satıldığı fiyat** (medyan) esas alınır:
+
+| Rozet | Anlamı |
+|---|---|
+| ✅ Son N günün en düşük fiyatı | Şu anki fiyat dönemin en düşüğü veya ona eşit |
+| ✅ Gerçek indirim | Normal fiyatın en az %5 altında; daha önce daha ucuza düştüyse tarihiyle yazılır |
+| ⚠️ Şişirilmiş indirim | Normal fiyattan %5'ten az ucuz; varsayılan olarak gizlenir (“Şişirilmiş indirimleri gizle”) |
+| Üstü çizili fiyat görülmedi | Marketin eski fiyatı son 90 günde hiç uygulanmamış |
+
+Büyük kutudaki oran kontrol bitince **gerçek oran** olur; marketin ilan ettiği oran ayrıca yazılır. Varsayılan sıralama
+“En yüksek gerçek indirim”. Kontrol ekrandaki ürünler için yapılır (aynı anda 4 istek), sonuçlar oturum boyunca saklanır.
