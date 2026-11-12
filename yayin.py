@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Kasım Fırsatları — herkese açık site yayıncısı (Teyitli Fırsat).
+"""Kasım Fırsatları — herkese açık site yayıncısı (Düşero).
 
 Bilgisayardaki program mağazada doğruladığı fırsatları buradan herkese açık siteye gönderir:
   1. Seçim     : yalnızca mağazada fiyatı teyit edilmiş, gerçekten indirimli, taze ürünler
@@ -30,12 +30,13 @@ TAZE_SN = 6 * 3600               # mağazadaki teyidi bundan eski ürün yayınd
 EN_FAZLA_URUN = 150
 EN_DUSUK_INDIRIM = 10            # %10'dan az indirim "fırsat" sayılmaz (dip fiyat / Akakçe en ucuzu hariç)
 TELEGRAM_TUR_BASINA = 8
+ESKI_SITE_ADLARI = {"Teyitli Fırsat"}   # eski varsayılan ad; kayıtlı ayarda buysa Düşero'ya geçilir
 VARSAYILAN = {
-    "site_adi": "Teyitli Fırsat",
+    "site_adi": "Düşero",
     "slogan": "Fiyatı mağazada teyit edilmiş indirimler",
     "github": {"depo": "", "token": "", "dal": "main"},
     "iletisim": "",               # yasal sayfada görünen e-posta (içerik kaldırma talepleri için)
-    "alan_adi": "",               # özel alan adı (ör. teyitlifirsat.com); boşsa github.io adresi
+    "alan_adi": "",               # özel alan adı (ör. dusero.com); boşsa github.io adresi
     "telegram": {"bot_token": "", "kanal": ""},
     # Mağaza başına ortaklık ayarı. İki biçim:
     #   {"param": {"tag": "ornek-21"}}                       → linke parametre eklenir
@@ -268,7 +269,8 @@ def telegram_metni(o, site_adi):
     if o.get("kosul"):
         satirlar.append(f"⚠️ {html.escape(o['kosul'])}")
     satirlar += ["", f'<a href="{html.escape(o["link"])}">👉 Mağazada gör</a>']
-    satirlar.append("<i>Fiyat ve stok anlık değişebilir.</i>" + (" #işbirliği" if o.get("ortaklik") else ""))
+    satirlar.append(f"🔻 <b>{html.escape(site_adi or VARSAYILAN['site_adi'])}</b> · <i>Fiyat ve stok anlık değişebilir.</i>"
+                    + (" #işbirliği" if o.get("ortaklik") else ""))
     return "\n".join(satirlar)
 
 
@@ -291,6 +293,14 @@ def telegram_gonder(tg, o, site_adi):
 # ---------------------------------------------------------------------------
 # Yayıncı
 # ---------------------------------------------------------------------------
+def marka_guncelle(ayar):
+    """Eski varsayılan site adını (Teyitli Fırsat) Düşero yapar. Kullanıcının kendi koyduğu ada dokunmaz."""
+    if (ayar.get("site_adi") or "").strip() in ESKI_SITE_ADLARI:
+        ayar["site_adi"] = VARSAYILAN["site_adi"]
+        return True
+    return False
+
+
 class Yayinci:
     def __init__(self, depo, veri_dizini, sablon_dizini, surum):
         self.depo, self.sablon, self.surum = depo, sablon_dizini, surum
@@ -299,6 +309,8 @@ class Yayinci:
         self.ayar = self._oku(self.ayar_yolu, {})
         for k, v in VARSAYILAN.items():
             self.ayar.setdefault(k, json.loads(json.dumps(v)))
+        if marka_guncelle(self.ayar) and os.path.exists(self.ayar_yolu):
+            self.ayarlari_kaydet()
         self.durum = self._oku(self.durum_yolu, {"hashler": {}, "ozet": None, "son": 0, "gonderilen": {}})
         self.son_hata, self.son_sayi = None, 0
         self.tetik = threading.Event()
@@ -422,6 +434,7 @@ def kurulum_sihirbazi(veri_dizini):
     ayar = Yayinci._oku(yol, {})
     for k, v in VARSAYILAN.items():
         ayar.setdefault(k, json.loads(json.dumps(v)))
+    marka_guncelle(ayar)
 
     def sor(soru, mevcut="", gizli=False):
         ipucu = f" [{'(kayıtlı)' if gizli and mevcut else mevcut}]" if mevcut else ""
@@ -430,13 +443,13 @@ def kurulum_sihirbazi(veri_dizini):
 
     print("\n=== Herkese açık site kurulumu ===  (boş bırakırsanız köşeli parantezdeki değer kalır)\n")
     ayar["site_adi"] = sor("Site adı", ayar["site_adi"])
-    ayar["github"]["depo"] = sor("GitHub deposu (kullanıcı/depo, ör. ftastan33-beep/teyitli-firsat)", ayar["github"]["depo"])
+    ayar["github"]["depo"] = sor("GitHub deposu (kullanıcı/depo, ör. ftastan33-beep/dusero)", ayar["github"]["depo"])
     ayar["github"]["token"] = sor("GitHub anahtarı (yapıştırın, ekranda görünmez)", ayar["github"]["token"], gizli=True)
     ayar["iletisim"] = sor("Sitede görünecek iletişim e-postası", ayar.get("iletisim", ""))
     ayar["alan_adi"] = sor("Özel alan adı (yoksa boş geçin)", ayar.get("alan_adi", ""))
     if input("Telegram kanalına da otomatik paylaşılsın mı? (e/h) [h]: ").strip().lower().startswith("e"):
         ayar["telegram"]["bot_token"] = sor("Telegram bot anahtarı (BotFather'dan)", ayar["telegram"]["bot_token"], gizli=True)
-        ayar["telegram"]["kanal"] = sor("Kanal kullanıcı adı (ör. @teyitlifirsat)", ayar["telegram"]["kanal"])
+        ayar["telegram"]["kanal"] = sor("Kanal kullanıcı adı (ör. @dusero)", ayar["telegram"]["kanal"])
     print("\nGitHub bağlantısı deneniyor...")
     try:
         d = _gh(ayar["github"]["token"], "GET", f"/repos/{ayar['github']['depo']}")

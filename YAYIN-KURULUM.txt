@@ -1,5 +1,5 @@
-TEYİTLİ FIRSAT — HERKESE AÇIK SİTE KURULUMU (bir kez, ~15 dakika)
-=================================================================
+DÜŞERO — HERKESE AÇIK SİTE KURULUMU (bir kez, ~15 dakika)
+=========================================================
 
 Nasıl çalışır?
   Bilgisayardaki Kasım Fırsatları programı fırsatları toplar ve mağazada doğrular (ev internetiyle,
@@ -23,7 +23,7 @@ Nasıl çalışır?
 
 3) PROGRAMA TANITIN
    Program klasöründe "Yayin-Kur.bat" dosyasına çift tıklayın ve soruları cevaplayın:
-   - Site adı (Enter = Teyitli Fırsat)
+   - Site adı (Enter = Düşero)
    - GitHub deposu: kullanıcıadınız/teyitli-firsat
    - Anahtar: 2. adımda kopyaladığınızı yapıştırın (ekranda görünmez, bu normal)
    - İletişim e-postası: yasal sayfada görünür (içerik kaldırma talepleri için)
@@ -45,7 +45,7 @@ Nasıl çalışır?
   Telegram kanalı: Telegram'da @BotFather → /newbot → bot anahtarını alın. Kanalı açın, botu kanala
     YÖNETİCİ olarak ekleyin. Yayin-Kur.bat'ı tekrar çalıştırıp Telegram sorusuna "e" deyin.
     İlk turda mevcut liste kanala dökülmez; sonrasında her yeni fırsat (turda en fazla 8) paylaşılır.
-  Özel alan adı (ör. teyitlifirsat.com): alan adını alın, Yayin-Kur.bat'ta yazın, alan adı
+  Özel alan adı (ör. dusero.com): alan adını alın, Yayin-Kur.bat'ta yazın, alan adı
     sağlayıcısında GitHub Pages'in istediği DNS kayıtlarını girin (Settings → Pages → Custom domain).
   Satış ortaklığı: hesaplar onaylanınca ayarlar dosyasına (kullanıcı klasörü\.kasim_firsat\yayin.json)
     "ortaklik" bölümü eklenir. Örnek:
