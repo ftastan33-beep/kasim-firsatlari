@@ -90,15 +90,15 @@ class Secim(unittest.TestCase):
 
 class Site(unittest.TestCase):
     def test_dosyalar_ve_yer_tutucular(self):
-        ayar = dict(yayin.VARSAYILAN, telegram={"kanal": "@teyitli", "bot_token": ""}, iletisim="info@ornek.com")
+        ayar = dict(yayin.VARSAYILAN, telegram={"kanal": "@dusero", "bot_token": ""}, iletisim="info@ornek.com")
         d = yayin.site_dosyalari(SABLON, ayar, yayin.yayin_listesi([ornek()], {}), "3.1")
         for yol in ("index.html", "app.js", "sw.js", "stil.css", "manifest.webmanifest", "ikon-192.png", "yasal.html", "veri.json", ".nojekyll"):
             self.assertIn(yol, d)
         for yol, icerik in d.items():
             if yol.endswith((".html", ".js", ".css", ".webmanifest")):
                 self.assertNotIn(b"{{", icerik, yol)
-        self.assertIn("Teyitli Fırsat".encode(), d["index.html"])
-        self.assertIn(b"t.me/teyitli", d["index.html"])
+        self.assertIn("Düşero".encode(), d["index.html"])
+        self.assertIn(b"t.me/dusero", d["index.html"])
         self.assertIn(b"mailto:info@ornek.com", d["yasal.html"])
         self.assertEqual(len(json.loads(d["veri.json"])["urunler"]), 1)
 
@@ -156,6 +156,32 @@ class Yukleme(unittest.TestCase):
             yayin.github_yukle, yayin.telegram_gonder = eski_y, eski_t
         self.assertIn("index.html", yuklenen[0])
         self.assertEqual(gonderilen, [])                      # ilk çalıştırmada eldeki liste kanala dökülmez
+
+
+class Marka(unittest.TestCase):
+    def test_eski_varsayilan_ad_duseroya_gecer(self):
+        ayar = {"site_adi": "Teyitli Fırsat"}
+        self.assertTrue(yayin.marka_guncelle(ayar))
+        self.assertEqual(ayar["site_adi"], "Düşero")
+
+    def test_kullanicinin_kendi_adina_dokunulmaz(self):
+        ayar = {"site_adi": "Benim Sitem"}
+        self.assertFalse(yayin.marka_guncelle(ayar))
+        self.assertEqual(ayar["site_adi"], "Benim Sitem")
+
+    def test_kayitli_ayar_acilista_guncellenir(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "yayin.json"), "w", encoding="utf-8") as f:
+                json.dump({"site_adi": "Teyitli Fırsat", "slogan": "x"}, f)
+            y = yayin.Yayinci(None, d, SABLON, "3.5.1")
+            self.assertEqual(y.ayar["site_adi"], "Düşero")
+            with open(os.path.join(d, "yayin.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["site_adi"], "Düşero")
+
+    def test_telegram_mesajinda_marka(self):
+        o = yayin.yayin_listesi([ornek()], {})[0]
+        self.assertIn("Düşero", yayin.telegram_metni(o, "Düşero"))
 
 
 if __name__ == "__main__":

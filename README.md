@@ -76,7 +76,7 @@ Ortam değişkenleri: `KF_DOGRULAMA_SN` (sitede doğrulamaya ayrılan süre, var
 
 Testler: `python -m unittest discover -s tests -v`
 
-## 3.2 — Herkese açık site ve uygulama (Teyitli Fırsat)
+## 3.2 — Herkese açık site ve uygulama (Düşero)
 
 Bilgisayardaki program doğruladığı fırsatları 10 dakikada bir herkese açık siteye gönderir (`yayin.py`, şablon `site/`).
 Site GitHub Pages'te ücretsiz yayınlanır ve telefona uygulama olarak (PWA) kurulabilir.
@@ -172,3 +172,12 @@ fiyat geçmişi girdileri ve karşılaştırmalar bir kez silinir, sonraki yenil
 - Programın fiyat kaydına göre indirim artık tek bir uç değere değil, kayıtların ortancasına göre hesaplanır. Az kayıtla
   %50+ çıkan oranlar (genelde farklı paket/varyant) indirim sayılmaz, “kontrol et” olarak işaretlenir.
 - Başlığı yalnızca bağlantı (“🛒 https://…”) olan paylaşımlarda ürün adı doğru satırdan alınır.
+
+## 3.5.1 — Düşero markası
+
+- Herkese açık sitenin ve uygulamanın adı **Düşero** oldu; yeni ikon: fiyatı düşen etiket.
+- Daha önce kurulumda ad olarak eski varsayılan “Teyitli Fırsat” kaldıysa program açılışta kendiliğinden Düşero'ya geçer.
+  Kendi koyduğunuz başka bir ad varsa değiştirilmez.
+- Telegram paylaşımlarının altına “🔻 Düşero” imzası eklendi.
+- Telefona kurulu uygulama sürüm değiştiği için yeni ad ve ikonu bir sonraki açılışta alır
+  (ana ekran ikonu bazı telefonlarda ancak uygulama kaldırılıp yeniden eklenince yenilenir).
