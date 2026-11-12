@@ -173,7 +173,7 @@ fiyat geçmişi girdileri ve karşılaştırmalar bir kez silinir, sonraki yenil
   %50+ çıkan oranlar (genelde farklı paket/varyant) indirim sayılmaz, “kontrol et” olarak işaretlenir.
 - Başlığı yalnızca bağlantı (“🛒 https://…”) olan paylaşımlarda ürün adı doğru satırdan alınır.
 
-## 3.5.1 — Düşero markası
+## 3.5.1 — Düşero markası ve tüm ürünlerde arama
 
 - Herkese açık sitenin ve uygulamanın adı **Düşero** oldu; yeni ikon: fiyatı düşen etiket.
 - Daha önce kurulumda ad olarak eski varsayılan “Teyitli Fırsat” kaldıysa program açılışta kendiliğinden Düşero'ya geçer.
@@ -181,3 +181,7 @@ fiyat geçmişi girdileri ve karşılaştırmalar bir kez silinir, sonraki yenil
 - Telegram paylaşımlarının altına “🔻 Düşero” imzası eklendi.
 - Telefona kurulu uygulama sürüm değiştiği için yeni ad ve ikonu bir sonraki açılışta alır
   (ana ekran ikonu bazı telefonlarda ancak uygulama kaldırılıp yeniden eklenince yenilenir).
+- **Arama kutusunda “Tüm ürünler”:** aranan kelime Akakçe’de de aranır; kayıtlı fırsat olmasa bile ürünlerin bugünkü en ucuz
+  fiyatı görselli kartlarla listelenir (en çok 30 ürün, 30 dakika önbellek, Akakçe’ye istekler arası en az 2 sn).
+  Bunlar indirim değil, güncel fiyattır. Altında Trendyol, Hepsiburada, Amazon, n11, Akakçe ve Cimri’de aynı aramayı açan
+  bağlantılar var. Yalnızca programda çalışır; GitHub Pages’teki kişisel site ve herkese açık Düşero sitesi Akakçe verisi göstermez.

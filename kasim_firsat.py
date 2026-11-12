@@ -125,6 +125,9 @@ AKAKCE_ONBELLEK_SN = 12 * 3600
 AKAKCE_COZUCU = 2           # Akakçe okuma kuralı sürümü; değişince eski (hatalı) Akakçe kayıtları temizlenir
 AKAKCE_TAKIP_SN = 3 * 3600  # takip kelimesinin Akakçe araması kaç saatte bir yenilensin
 AKAKCE_TAKIP_ADET = 12      # takip kelimesi başına Akakçe'den alınan ürün sayısı
+KATALOG_ONBELLEK_SN = 30 * 60   # arama kutusundaki "tüm ürünler" (Akakçe) sonuçları bu süre saklanır
+KATALOG_ARALIK_SN = 2.0         # Akakçe'ye iki arama arasında en az bu kadar beklenir (siteyi yormamak için)
+KATALOG_ADET = 30
 EN_FAZLA_KANAL = 25
 EN_FAZLA_GONDERI = 4000
 UA = ("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 "
@@ -3306,6 +3309,37 @@ class Depo:
                                              for x in en_yeni.values()), key=lambda m: m["fiyat"])
         return sonuc
 
+    def katalog_ara(self, q):
+        """Arama kutusu için "tüm ürünler": Akakçe aramasındaki ürünler ve bugünkü en ucuz fiyatları.
+        Fırsat değil, güncel fiyat listesidir. 30 dakika önbellek; Akakçe'ye istekler arası en az 2 sn."""
+        q = re.sub(r"\s+", " ", (q or "").strip())[:80]
+        if len(q) < 2:
+            return {"durum": "kisa", "urunler": []}
+        sk = sade(q)
+        ob = self.__dict__.setdefault("_katalog_onbellek", {})
+        kayit = ob.get(sk)
+        if kayit and time.time() - kayit["ts"] < KATALOG_ONBELLEK_SN:
+            return kayit
+        kilit = self.__dict__.setdefault("_katalog_kilit", threading.Lock())
+        with kilit:   # aynı anda tek Akakçe isteği
+            bekle = KATALOG_ARALIK_SN - (time.time() - self.__dict__.get("_katalog_son", 0))
+            if bekle > 0:
+                time.sleep(bekle)
+            try:
+                s_ = magaza_sayfasi_getir("https://www.akakce.com/arama/?q=" + urllib.parse.quote(q), tarayici=False)
+            except Exception as e:
+                s_ = {"durum": "hata", "mesaj": hata_metni(e)}
+            self._katalog_son = time.time()
+        if s_.get("durum") != "ok":
+            return {"durum": s_.get("durum") or "hata", "urunler": [], "q": q, "ts": int(time.time()),
+                    "mesaj": "Akakçe şu an yanıt vermedi" if s_.get("durum") != "engellendi" else "Akakçe otomatik aramaya izin vermedi"}
+        urunler = [{k: u.get(k) for k in ("ad", "fiyat", "fark", "yuzde", "link", "resim")} for u in akakce_coz(s_["html"])[:KATALOG_ADET]]
+        kayit = {"durum": "ok", "q": q, "ts": int(time.time()), "urunler": urunler}
+        if len(ob) > 200:
+            ob.clear()
+        ob[sk] = kayit
+        return kayit
+
     def ara(self, q):
         """Kanalların kendi arama sayfalarında anında arar; bulunanları listeye ekler."""
         q = re.sub(r"\s+", " ", q).strip()[:40]
@@ -3827,6 +3861,9 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(200, {"idler": self.depo.ara(q)})
         elif yol == "/api/arsiv":
             self._json(200, self.depo.arsiv_listesi())
+        elif yol == "/api/katalog":
+            q = urllib.parse.parse_qs(parca.query).get("q", [""])[0]
+            self._json(200, self.depo.katalog_ara(q))
         else:
             self._json(404, {"hata": "bulunamadı"})
 
@@ -4004,6 +4041,7 @@ STATIK_ARAYUZ_EKI = r"""<script>
     if (url.startsWith("/api/arsiv")) { try { return yanit(await (await asil("arsiv.json?t=" + Date.now(), {cache: "no-store"})).json()); } catch (e) { return yanit({a: []}); } }
     if (url.startsWith("/api/ara") || url.startsWith("/api/gecmis")) return yanit({idler: [], ok: true});
     if (url.startsWith("/api/canli")) return yanit({durum: "hata", mesaj: "Sitede anlık kontrol yok"});
+    if (url.startsWith("/api/katalog")) return yanit({durum: "statik", urunler: []});
     if (url.startsWith("/api/")) return yanit({hata: "Sitede bu işlem yok"}, 400);
     return asil(url, opt);
   };
@@ -4347,6 +4385,11 @@ b.dus{color:var(--yesil)} b.art{color:var(--kirmizi)}
 .d-tablo tr.enucuz td{font-weight:700}
 .d-tablo a{color:inherit}
 .eski-liste{margin-top:22px}
+.katalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:10px 0}
+.k-urun{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--cizgi);border-radius:12px;background:var(--yuzey);color:inherit;text-decoration:none}
+.k-urun img,.k-resim-yok{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;background:#fff}
+.k-ad{font-size:13px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.k-fiyat{font-weight:700;font-variant-numeric:tabular-nums}.k-fark{font-size:12px;color:var(--soluk)}
 .k-bitti{opacity:.62}
 .rozet.r-kac{background:#b91c1c;color:#fff;font-weight:700}
 .fdeger.bilinmiyor{font-size:20px;color:var(--soluk)}.fdeger.bilinmiyor small{display:block;font-size:11px;font-weight:500;text-align:right}
@@ -5156,6 +5199,7 @@ function listeCiz(){
           </tbody></table></section>` : "") + arsivBolum;
   }
   else govde = d.slice(0, S.limit).map(kartSec).join("") + (d.length > S.limit ? `<button type="button" class="daha" id="daha">Daha fazla göster (${d.length - S.limit})</button>` : "");
+  if (S.veri && arama) govde += katalogBolumu();
   $("#icerik").innerHTML = `
     <div class="filtre">
       <input type="search" id="ara" placeholder="Ürün ara (ör. airfryer, kulaklık)" value="${esc(S.f.ara)}" autocomplete="off">
@@ -5293,7 +5337,40 @@ function arsivSonuclari(gorulen){
   return S.arsiv.filter(x => !gorulen.has(x.id) && aramaEslesir(x, parca))
     .map(x => (x._puan = aramaPuani(x, q, parca), x)).sort((a, b) => (a._puan - b._puan) || (b.ts - a.ts));
 }
+async function katalogAra(q){
+  const sq = sadeJS(q);
+  if (S.katalog && S.katalog.sq === sq && S.katalog.durum !== "hata") return;
+  if (S.veri && (S.veri.onizleme || S.veri.statik)) { S.katalog = {sq, q, durum: "statik", urunler: []}; return; }
+  S.katalog = {sq, q, durum: "araniyor", urunler: []}; ciz();
+  try {
+    const j = await (await fetch("/api/katalog?q=" + encodeURIComponent(q), {cache: "no-store"})).json();
+    if (sadeJS(S.f.ara.trim()) !== sq) return;
+    S.katalog = Object.assign({sq, q}, j, {urunler: j.urunler || []});
+  } catch (e) { if (sadeJS(S.f.ara.trim()) === sq) S.katalog = {sq, q, durum: "hata", urunler: []}; }
+  ciz();
+}
+function katalogBolumu(){
+  const q = S.f.ara.trim(), k = S.katalog, kq = encodeURIComponent(q);
+  const magazalar = [["Trendyol", `https://www.trendyol.com/sr?q=${kq}`], ["Hepsiburada", `https://www.hepsiburada.com/ara?q=${kq}`],
+    ["Amazon", `https://www.amazon.com.tr/s?k=${kq}`], ["n11", `https://www.n11.com/arama?q=${kq}`],
+    ["Akakçe", `https://www.akakce.com/arama/?q=${kq}`], ["Cimri", `https://www.cimri.com/arama?q=${kq}`]];
+  const linkler = `<div class="ipucu">Mağazalarda ara: ${magazalar.map(([a, u]) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${a}</a>`).join(" · ")}</div>`;
+  let ic;
+  if (!k || k.sq !== sadeJS(q) || k.durum === "araniyor") ic = `<div class="ipucu">Tüm ürünlerde aranıyor…</div>`;
+  else if (k.durum === "statik") ic = `<div class="ipucu">Tüm ürünlerde arama yalnızca bilgisayardaki programda (ve telefonda programın adresinden) çalışır.</div>`;
+  else if (k.durum !== "ok") ic = `<div class="ipucu">${esc(k.mesaj || "Tüm ürünlerde arama şu an yapılamadı")}. Aşağıdaki mağaza bağlantılarını kullanın.</div>`;
+  else if (!k.urunler.length) ic = `<div class="ipucu">Akakçe’de “${esc(q)}” için ürün bulunamadı. Marka ya da model adıyla deneyin.</div>`;
+  else ic = `<div class="not">Bunlar indirim değil, ürünlerin <b>bugünkü en ucuz fiyatlarıdır</b> (kaynak: Akakçe, ${tarihKisa(k.ts)} itibarıyla). Satıcıları ve fiyat geçmişini görmek için ürüne dokunun.</div>
+    <div class="katalog">${k.urunler.map(u => `<a class="k-urun" href="${esc(u.link)}" target="_blank" rel="noopener noreferrer">
+      ${u.resim ? `<img src="${esc(u.resim)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="k-resim-yok"></span>`}
+      <span class="k-ad">${esc(u.ad)}</span>
+      <span class="k-fiyat">${tl(u.fiyat)}</span>
+      ${u.fark ? `<span class="k-fark">diğer satıcılardan ${tl(u.fark)} ucuz</span>` : ""}
+    </a>`).join("")}</div>`;
+  return `<section class="eski-liste"><h2 class="bolum">Tüm ürünler${k && k.durum === "ok" && k.urunler.length ? ` <span class="say">${k.urunler.length}</span>` : ""}</h2>${ic}${linkler}</section>`;
+}
 async function kanallardaAra(q){
+  katalogAra(q);
   S.araOnbellek = S.araOnbellek || {};
   if (S.veri && S.veri.onizleme) { S.araDurum = "onizleme"; ciz(); return; }
   arsivYukle();

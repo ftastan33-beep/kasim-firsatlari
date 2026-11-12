@@ -242,5 +242,44 @@ class FarkliVaryantTesti(unittest.TestCase):
         self.assertIsNone(k.baglanti_farkli_urun(g, {"baslik": "Samsung Galaxy S26 FE 256 GB Grafit"}))
 
 
+class TumUrunlerArama(unittest.TestCase):
+    """Arama kutusundaki "Tüm ürünler" bölümü: Akakçe araması, önbellek ve hata durumu (internet gerektirmez)."""
+    def setUp(self):
+        self.eski = kf.magaza_sayfasi_getir
+        self.istek = 0
+
+        def sahte(*a, **k):
+            self.istek += 1
+            return {"durum": "ok", "html": AKAKCE_ARAMA, "kod": 200, "denenen": []}
+        kf.magaza_sayfasi_getir = sahte
+        self.depo = type("SahteDepo", (), {})()
+
+    def tearDown(self):
+        kf.magaza_sayfasi_getir = self.eski
+
+    def test_urunler_ve_fiyat(self):
+        r = kf.Depo.katalog_ara(self.depo, "airfryer")
+        self.assertEqual(r["durum"], "ok")
+        self.assertEqual(len(r["urunler"]), 2)
+        self.assertEqual(r["urunler"][0]["fiyat"], 5799)
+        self.assertTrue(r["urunler"][0]["link"].startswith("https://www.akakce.com/"))
+
+    def test_onbellek_ikinci_istegi_onler(self):
+        kf.Depo.katalog_ara(self.depo, "airfryer")
+        kf.Depo.katalog_ara(self.depo, "  AIRFRYER ")
+        self.assertEqual(self.istek, 1)
+
+    def test_kisa_sorgu_istek_atmaz(self):
+        self.assertEqual(kf.Depo.katalog_ara(self.depo, "a")["durum"], "kisa")
+        self.assertEqual(self.istek, 0)
+
+    def test_engellenince_bos_ve_mesajli(self):
+        kf.magaza_sayfasi_getir = lambda *a, **k: {"durum": "engellendi", "kod": 403, "denenen": []}
+        r = kf.Depo.katalog_ara(self.depo, "kulaklik")
+        self.assertEqual(r["durum"], "engellendi")
+        self.assertEqual(r["urunler"], [])
+        self.assertIn("izin vermedi", r["mesaj"])
+
+
 if __name__ == "__main__":
     unittest.main()
