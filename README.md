@@ -143,3 +143,32 @@ Büyük kutudaki oran kontrol bitince **gerçek oran** olur; marketin ilan etti�
   renklerinde etiketler; telefonda iki sütun.
 - **Market Fiyatı'nı yormama:** aynı anda en çok 2 istek, istekler arası 250 ms; fiyat geçmişi yalnızca ekrandaki ürünler için
   ve bu cihazda 12 saat saklanır. Bağlantı kesilir ya da çok sık istek uyarısı gelirse 2 dakika istek atılmaz.
+
+## 3.5 — Fiyat ve kupon düzeltmeleri, takip araması
+
+**Akakçe fiyat hatası düzeltildi.** Akakçe fiyatı kuruşunu ayrı etikette yazıyor (`27.599<i>,00 TL</i>`). Eski okuyucu bu
+fiyatı okuyamayıp kartın köşesindeki **“3.400 TL fark”** rozetini ürün fiyatı sanıyordu (ör. 48.000 TL'lik telefon 4.840 TL,
+3.599 TL'lik oyuncu koltuğu 800 TL görünüyordu). Artık fiyat yalnızca fiyat kutusundan okunur; fark rozeti ayrı okunur.
+Satıcılar arası fark oranı da fark tutarından hesaplanır. Aynı hata Akakçe karşılaştırmasını da bozuyordu (arama sonuçlarında
+fiyat bulunamadığı için hep “bulunamadı”); o da düzeldi. İlk açılışta eski sürümün kaydettiği hatalı Akakçe ürünleri,
+fiyat geçmişi girdileri ve karşılaştırmalar bir kez silinir, sonraki yenilemede doğru fiyatla yeniden gelir.
+
+**Kuponlar:**
+- Büyük harfle yazılan `KOD:`, `KODU:`, `KUPON KODU:` ve “Bu kod uygulamada geçerlidir: APP150” gibi kalıplardaki kodlar artık okunur.
+- “kod çalışmıyor”, “kupon bitti”, “limit doldu”, “tükenmiştir” gibi ifadeler paylaşımı **bitti** sayar.
+- Bir kanal bir kodun bittiğini sonradan paylaşırsa, aynı kodu içeren eski paylaşımlar da (başka kanallarda olsa bile) gizlenir.
+- Bitiş tarihi okunuyor: “12-14 Kasım”, “11.11'e özel”, “10/11 - 12/11 arası”.
+- Bitiş tarihi yazılmayan kodlar 3 günden eskiyse “büyük olasılıkla geçersiz” sayılır ve “Süresi geçenleri gizle” açıkken gösterilmez.
+
+**Takip kelimeleri:**
+- Eş anlamlılar ve Türkçe ekler eşleşir: “oyuncu sandalyesi” = “oyuncu koltuğu / gaming chair”; “evrak çantası” = “evrak çanta / iş çantası”.
+- Her takip kelimesi 3 saatte bir **Akakçe'de de aranır**; bulunan ürünlerin bugünkü en ucuz fiyatı Takibim sekmesinde görünür
+  (bu kartlar indirim değil, güncel en ucuz fiyattır; “Tüm ürünler” sekmesine karışmaz).
+- Varsayılan takip listesi: oyuncu sandalyesi, evrak çantası.
+
+**Öne çıkanlar (3.5):**
+- “3 al 2 öde”, “2 al 1 öde” gibi çoklu alım kampanyaları tek başına indirim sayılmaz; ürünün kendi fiyatı düşmemiştir.
+- Mağazada fiyatı paylaşılandan yükselmiş ürünler ve “kontrol et” işaretli şüpheli fiyatlar Öne çıkanlar'a girmez.
+- Programın fiyat kaydına göre indirim artık tek bir uç değere değil, kayıtların ortancasına göre hesaplanır. Az kayıtla
+  %50+ çıkan oranlar (genelde farklı paket/varyant) indirim sayılmaz, “kontrol et” olarak işaretlenir.
+- Başlığı yalnızca bağlantı (“🛒 https://…”) olan paylaşımlarda ürün adı doğru satırdan alınır.
