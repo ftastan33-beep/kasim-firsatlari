@@ -39,6 +39,11 @@ TELEGRAM_TUR_BASINA = 8
 GECMIS_PENCERE_GUN = 90          # indirim değerlendirmesinde bakılan dönem
 GECMIS_NOKTA = 30                # sitede grafik için gönderilen en fazla geçmiş kaydı
 TELEGRAM_ILK_TUR = 5          # ilk açılışta kanala gönderilecek en iyi fırsat sayısı
+# Kanal siteden daha seçicidir: yalnızca "hemen bakılmalı" denecek düşüşler gider.
+TELEGRAM_EN_DUSUK_INDIRIM = 20   # üstü çizili fiyata göre en az bu kadar indirim (geçmişle çelişmiyorsa)
+TELEGRAM_EN_DUSUK_GERCEK = 10    # ya da kayıtlı geçmişteki normal fiyatın en az bu kadar altı
+TELEGRAM_BITIS_TAKIP_SN = 7 * 86400   # gönderilen mesajın "sona erdi" diye düzenlenebileceği süre
+TELEGRAM_FIYAT_ARTIS = 1.03      # mağazadaki fiyat paylaşılandan bu oranda yükselirse fırsat bitmiş sayılır
 VARSAYILAN = {
     "site_adi": "Düşero",
     "slogan": "Gerçekten düşen fiyatlar",
@@ -169,6 +174,59 @@ def kisa_id(metin):
     return hashlib.sha1(metin.encode("utf-8")).hexdigest()[:12]
 
 
+# Mağaza sayfası başlıklarına eklenen site/kategori kuyrukları: "...: Amazon.com.tr: Otomotiv",
+# "... Fiyatları ve Özellikleri", "... - Fiyatı", "... | Boyner" gibi.
+_BASLIK_KUYRUK_RE = re.compile(
+    r"(?:\s*[:|\-–]\s*(?:amazon\.com\.tr|trendyol(?:\.com)?|hepsiburada(?:\.com)?|n11(?:\.com)?|boyner|pazarama|"
+    r"teknosa|vatan(?:\s*bilgisayar)?|mediamarkt|morhipo|çiçeksepeti|ciceksepeti|koçtaş|koctas|a101|migros)"
+    r"(?:\s*:\s*[^:|]{1,40})?\s*$)"
+    r"|(?:\s*[-–|:]?\s*(?:en ucuz )?fiyat(?:ı|lari|ları)(?: ve (?:özellikleri|modelleri|yorumları))?\s*$)"
+    r"|(?:\s*[-–|]\s*\d{6,}\s*$)",
+    re.I)
+
+
+def baslik_temizle(baslik):
+    """Mağaza başlığındaki site adı, kategori ve "Fiyatları ve Özellikleri" gibi kuyrukları atar."""
+    b = re.sub(r"\s+", " ", baslik or "").strip()
+    for _ in range(3):                       # birden çok kuyruk üst üste olabilir
+        yeni = _BASLIK_KUYRUK_RE.sub("", b).strip(" -–|:")
+        if yeni == b or len(yeni) < 6:
+            break
+        b = yeni
+    return b
+
+
+def kanal_uygun(o):
+    """Bu fırsat Telegram kanalına gidecek kadar güçlü mü? Site daha geniş listeyi gösterir; kanal yalnızca
+    gerçek ve belirgin düşüşleri paylaşır (az ama seçilmiş paylaşım takipçiyi kanalda tutar)."""
+    # (Aracı site linkleri yayin_listesi'nde zaten elenir; ortaklık linki başka alan adında olabilir.)
+    if o.get("karar") == "sisirilmis":
+        return False
+    if o.get("karar") == "dip":
+        return True
+    if o.get("karar") == "iyi" and (o.get("gercek_yuzde") or 0) >= TELEGRAM_EN_DUSUK_GERCEK:
+        return True
+    return (o.get("yuzde") or 0) >= TELEGRAM_EN_DUSUK_INDIRIM
+
+
+def biten_firsatlar(firsatlar):
+    """{id: neden}: mağazada stoku biten, fiyatı tutmayan ya da kanalda "bitti" denen ürünler.
+    Kimlik yayin_listesi ile aynı yoldan (temiz mağaza linki) üretilir."""
+    sonuc = {}
+    for d in firsatlar:
+        if d.get("tur") != "urun":
+            continue
+        dg = d.get("dogrulama") or {}
+        if not (d.get("bitti") or dg.get("durum") == "red"):
+            continue
+        kaynak = dg.get("son_url") or d.get("urun_link")
+        if not kaynak or not kaynak.startswith("http"):
+            continue
+        neden = dg.get("neden") if dg.get("durum") == "red" else "Fırsat sona erdi"
+        sonuc[kisa_id(link_temizle(kaynak, d.get("magaza")))] = (neden or "Fırsat sona erdi", int(dg.get("ts") or d.get("ts") or 0))
+    return sonuc
+
+
 def yayin_listesi(firsatlar, ayar, an=None):
     """Depo.firsatlar() çıktısından herkese açık listeyi üretir. Kanal metni/adı alınmaz."""
     an = an or time.time()
@@ -201,7 +259,7 @@ def yayin_listesi(firsatlar, ayar, an=None):
         if not ((yuzde or 0) >= EN_DUSUK_INDIRIM or dip or (akk and akk["fark"] <= 1)):
             continue
         link, ortak = ortaklik_linki(kaynak_link, d.get("magaza"), ayar)
-        baslik = re.sub(r"\s+", " ", d.get("magaza_basligi") or d.get("baslik") or "").strip()
+        baslik = baslik_temizle(d.get("magaza_basligi") or d.get("baslik") or "")
         if len(baslik) < 6:
             continue
         anahtar = link_temizle(kaynak_link, d.get("magaza"))
@@ -373,40 +431,83 @@ def _tl(x):
     return (s[:-3] if s.endswith(",00") else s) + " TL"
 
 
-def telegram_metni(o, site_adi):
-    satirlar = [f"<b>{html.escape(o['baslik'])}</b>", ""]
+def telegram_metni(o, site_adi, bitis=None):
+    """Kanal mesajı. bitis verilirse (neden metni) mesaj "sona erdi" olarak düzenlenmiş hâliyle üretilir."""
+    satirlar = []
+    if bitis:
+        satirlar += [f"❌ <b>FIRSAT SONA ERDİ</b> · {html.escape(bitis)}", ""]
+    satirlar += [f"<b>{html.escape(o['baslik'])}</b>", ""]
     fiyat = f"💰 <b>{_tl(o['fiyat'])}</b>"
     if o.get("eski_fiyat"):
         fiyat += f"  <s>{_tl(o['eski_fiyat'])}</s>  (%{o['yuzde']} indirim)"
+    elif o.get("normal") and (o.get("gercek_yuzde") or 0) > 0:
+        # Mağazada üstü çizili fiyat yoksa kendi kayıtlarımızdaki normal fiyatı gösteririz
+        fiyat += f"  <s>{_tl(o['normal'])}</s>  (normal fiyatın %{o['gercek_yuzde']} altında)"
     satirlar.append(fiyat)
-    satirlar.append(f"🏬 {html.escape(o['magaza_ad'])} · ✔ {time.strftime('%H:%M', time.localtime(o['teyit']))} itibarıyla mağazada teyit edildi")
     if o.get("karar") in ("dip", "iyi"):
         satirlar.append(f"📉 {'Gerçek indirim' if o['karar'] == 'dip' else 'İyi fiyat'} · {html.escape(o['etiket'])}")
     elif o.get("dip"):
         satirlar.append(f"📉 {html.escape(o['dip'])}")
+    if o.get("en_dusuk") and o.get("en_yuksek") and o["en_yuksek"] > o["en_dusuk"] and o.get("gun"):
+        satirlar.append(f"📊 Son {o['gun']} gün: en düşük {_tl(o['en_dusuk'])} · en yüksek {_tl(o['en_yuksek'])}")
     if o.get("akakce"):
         satirlar.append("⚖️ Akakçe'deki en ucuz fiyat seviyesinde" if o["akakce"]["fark"] <= 1 else
                         f"⚖️ Akakçe'de en ucuzu {_tl(o['akakce']['en_ucuz'])}")
     if o.get("kosul"):
         satirlar.append(f"⚠️ {html.escape(o['kosul'])}")
-    satirlar += ["", f'<a href="{html.escape(o["link"])}">👉 Mağazada gör</a>']
+    satirlar.append(f"🏬 {html.escape(o['magaza_ad'])} · ✔ {time.strftime('%H:%M', time.localtime(o['teyit']))} itibarıyla mağazada teyit edildi")
+    if not bitis:
+        satirlar += ["", f'<a href="{html.escape(o["link"])}">👉 Mağazada gör</a>']
     satirlar.append("<i>Fiyat ve stok anlık değişebilir.</i>" + (" #işbirliği" if o.get("ortaklik") else ""))
     return "\n".join(satirlar)
 
 
-def telegram_gonder(tg, o, site_adi):
-    yontem, govde = ("sendPhoto", {"photo": o["resim"], "caption": telegram_metni(o, site_adi)}) if o.get("resim") else \
-        ("sendMessage", {"text": telegram_metni(o, site_adi), "disable_web_page_preview": False})
-    govde.update(chat_id=tg["kanal"] if tg["kanal"].startswith(("@", "-")) else "@" + tg["kanal"], parse_mode="HTML")
+def _tg_istek(tg, yontem, govde):
     istek = urllib.request.Request(f"https://api.telegram.org/bot{tg['bot_token']}/{yontem}",
                                    data=json.dumps(govde).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(istek, timeout=20) as y:
+        return json.loads(y.read())
+
+
+def _tg_sohbet(tg):
+    return tg["kanal"] if tg["kanal"].startswith(("@", "-")) else "@" + tg["kanal"]
+
+
+def telegram_gonder(tg, o, site_adi):
+    """Mesajı gönderir. Başarılıysa {"mid": mesaj no, "tur": "foto"|"yazi"} döner (doğruluk değeri True)."""
+    if o.get("resim"):
+        yontem, govde = "sendPhoto", {"photo": o["resim"], "caption": telegram_metni(o, site_adi)}
+    else:
+        # Önizleme her zaman kendi mağaza linkimizden üretilsin (başka sitenin kartı görünmesin)
+        yontem, govde = "sendMessage", {"text": telegram_metni(o, site_adi),
+                                        "link_preview_options": {"url": o["link"], "prefer_large_media": True}}
+    govde.update(chat_id=_tg_sohbet(tg), parse_mode="HTML")
     try:
-        with urllib.request.urlopen(istek, timeout=20) as y:
-            return json.loads(y.read()).get("ok", False)
+        cevap = _tg_istek(tg, yontem, govde)
     except urllib.error.HTTPError as e:
         if yontem == "sendPhoto" and e.code == 400:    # görsel indirilemedi: yazıyla dene
-            o2 = dict(o, resim=None)
-            return telegram_gonder(tg, o2, site_adi)
+            return telegram_gonder(tg, dict(o, resim=None), site_adi)
+        raise
+    if not cevap.get("ok"):
+        return False
+    return {"mid": (cevap.get("result") or {}).get("message_id"), "tur": "foto" if yontem == "sendPhoto" else "yazi"}
+
+
+def telegram_bitti_isaretle(tg, kayit, neden, site_adi):
+    """Gönderilmiş mesajı "sona erdi" diye düzenler. kayit = {"mid", "tur", "o"}."""
+    metin = telegram_metni(kayit["o"], site_adi, bitis=neden)
+    govde = {"chat_id": _tg_sohbet(tg), "message_id": kayit["mid"], "parse_mode": "HTML"}
+    if kayit.get("tur") == "foto":
+        yontem = "editMessageCaption"
+        govde["caption"] = metin
+    else:
+        yontem = "editMessageText"
+        govde.update(text=metin, link_preview_options={"is_disabled": True})
+    try:
+        return bool(_tg_istek(tg, yontem, govde).get("ok"))
+    except urllib.error.HTTPError as e:
+        if e.code == 400:      # mesaj silinmiş ya da zaten aynı: tekrar denenmesin
+            return True
         raise
 
 
@@ -451,6 +552,7 @@ class Yayinci:
     def liste(self):
         with self.depo.kilit:
             f = self.depo.firsatlar()
+        self._son_firsatlar = f
         return yayin_listesi(f, self.ayar)
 
     def katalog_dosyalari(self, zorla=False):
@@ -515,16 +617,19 @@ class Yayinci:
         an = time.time()
         for k in [k for k, t in gon.items() if an - t > 7 * 86400]:
             del gon[k]
-        # Kanal yalnızca gerçek düşüşleri paylaşır: şişirilmiş indirimler sitede etiketli durur, kanala gitmez
-        yeni = [o for o in sorted(liste, key=lambda o: o["ilk"])
-                if o["id"] not in gon and o.get("karar") != "sisirilmis"][:TELEGRAM_TUR_BASINA]
+        mesajlar = self.durum.setdefault("tg_mesajlar", {})
+        for k in [k for k, m in mesajlar.items() if an - m.get("t", 0) > TELEGRAM_BITIS_TAKIP_SN]:
+            del mesajlar[k]
+        self._telegram_bitenler(tg, liste, mesajlar)
+        # Kanal yalnızca gerçek ve belirgin düşüşleri paylaşır (kanal_uygun); diğerleri sitede durur
+        uygun = [o for o in liste if kanal_uygun(o)]
+        yeni = [o for o in sorted(uygun, key=lambda o: o["ilk"]) if o["id"] not in gon][:TELEGRAM_TUR_BASINA]
         if not self.durum.get("telegram_basladi"):
             # İlk çalıştırmada tüm liste kanala dökülmesin: yalnızca en iyi birkaç fırsat paylaşılır,
             # kalanlar "gönderildi" sayılır. Sonraki turlarda sadece yeni fırsatlar gider.
             sira = {"dip": 0, "iyi": 1}
-            en_iyi = sorted((o for o in liste if o.get("karar") != "sisirilmis"),
-                            key=lambda o: (sira.get(o.get("karar"), 2), -(o.get("gercek_yuzde") or 0),
-                                           -(o.get("yuzde") or 0), -o["teyit"]))[:TELEGRAM_ILK_TUR]
+            en_iyi = sorted(uygun, key=lambda o: (sira.get(o.get("karar"), 2), -(o.get("gercek_yuzde") or 0),
+                                                  -(o.get("yuzde") or 0), -o["teyit"]))[:TELEGRAM_ILK_TUR]
             secili = {o["id"] for o in en_iyi}
             for o in liste:
                 if o["id"] not in secili:
@@ -533,12 +638,43 @@ class Yayinci:
             yeni = en_iyi
         for o in yeni:
             try:
-                if telegram_gonder(tg, o, self.ayar["site_adi"]):
+                sonuc = telegram_gonder(tg, o, self.ayar["site_adi"])
+                if sonuc:
                     gon[o["id"]] = time.time()
+                    if isinstance(sonuc, dict) and sonuc.get("mid"):
+                        mesajlar[o["id"]] = {"mid": sonuc["mid"], "tur": sonuc.get("tur"), "t": int(time.time()), "o": o}
             except Exception as e:
                 self.son_hata = "Telegram: " + str(e)[:120]
                 break
             time.sleep(3)
+
+    def _telegram_bitenler(self, tg, liste, mesajlar):
+        """Kanalda paylaşılmış ama artık geçerli olmayan fırsatların mesajını "sona erdi" diye düzenler.
+        Yalnızca kesin durumlar: mağazada stok bitti / fiyat tutmadı / kanalda bitti denildi ya da fiyat yükseldi.
+        Sadece teyidi eskidiği için listeden düşen ürüne dokunulmaz (fırsat hâlâ sürüyor olabilir)."""
+        if not mesajlar:
+            return
+        aktif = {o["id"]: o for o in liste}
+        biten = biten_firsatlar(getattr(self, "_son_firsatlar", None) or [])
+        for oid, m in list(mesajlar.items()):
+            if m.get("bitti"):
+                continue
+            neden = None
+            simdi = aktif.get(oid)
+            if simdi:
+                if simdi["fiyat"] > m["o"]["fiyat"] * TELEGRAM_FIYAT_ARTIS:
+                    neden = f"Fiyat {_tl(simdi['fiyat'])} oldu"
+            elif oid in biten and biten[oid][1] >= m.get("t", 0):
+                neden = biten[oid][0]
+            if not neden:
+                continue
+            try:
+                if telegram_bitti_isaretle(tg, m, neden, self.ayar["site_adi"]):
+                    m["bitti"] = int(time.time())
+            except Exception as e:
+                self.son_hata = "Telegram: " + str(e)[:120]
+                return
+            time.sleep(1)
 
     def ozet(self):
         gh = self.ayar.get("github") or {}

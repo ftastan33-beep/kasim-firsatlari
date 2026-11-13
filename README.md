@@ -210,6 +210,12 @@ kendiliğinden Düşero'ya geçer; elle yazılmış bir ad korunur.
 
 - **Arayüz:** “Günün düşüşü” vitrini, kategori çipleri, mağaza filtresi, “Sadece gerçek indirimler” anahtarı, gerçek düşüşe göre
   sıralama, fiyat geçmişi grafiğiyle ürün ayrıntısı (adres `#u-ÜRÜNKODU` ile paylaşılabilir), koyu tema, telefonda iki sütun.
-- **Telegram kanalı** yalnızca gerçek düşüşleri paylaşır; şişirilmiş indirimler sitede etiketli durur, kanala gönderilmez.
+- **Telegram kanalı** yalnızca gerçek ve belirgin düşüşleri paylaşır: kayıtlardaki dönemin en düşüğü, normal fiyatın
+  en az %10 altı ya da üstü çizili fiyata göre en az %20 indirim. "Yalnızca Akakçe'deki en ucuz" ya da küçük indirimler
+  sitede durur, kanala gitmez; şişirilmiş indirimler hiç gönderilmez.
+- Kanal mesajında mağaza başlığı temizlenir (site adı/kategori kuyruğu atılır), üstü çizili fiyat yoksa kayıtlardaki
+  normal fiyat ve dönemin en düşük/en yüksek fiyatı gösterilir; bağlantı önizlemesi her zaman bizim mağaza linkimizden üretilir.
+- Paylaşılan fırsat mağazada biterse (stok yok, fiyat tutmuyor, kanalda "bitti" denildi) ya da fiyatı %3'ten fazla
+  yükselirse mesaj silinmez, başına **"❌ FIRSAT SONA ERDİ"** eklenerek düzenlenir (7 gün boyunca takip edilir).
 - Kart görseli için önce mağaza sayfasından okunan görsel kullanılır.
 - 3.6'daki katalog araması yeni arayüzde de çalışır: arama, teyitli fırsatların altında “Katalogda bulunanlar” bölümünü açar.

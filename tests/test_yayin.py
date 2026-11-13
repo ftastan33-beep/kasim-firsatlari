@@ -240,5 +240,102 @@ class Yukleme(unittest.TestCase):
         self.assertEqual(gonderilen, [])
 
 
+class KanalKalitesi(unittest.TestCase):
+    def test_baslik_temizle(self):
+        t = yayin.baslik_temizle
+        self.assertEqual(t("Osram Ampul 55W 12V Pgj19-2 Fs1 Osr 64211ULT : Amazon.com.tr: Otomotiv"),
+                         "Osram Ampul 55W 12V Pgj19-2 Fs1 Osr 64211ULT")
+        self.assertEqual(t("Adidas Tensaur Run 3.0 Pembe 23.5 Fiyatları ve Özellikleri"), "Adidas Tensaur Run 3.0 Pembe 23.5")
+        self.assertEqual(t("Haki Regular Düz Bisiklet Yaka Sweatshirt Fiyatları ve Modelleri - Pazarama"),
+                         "Haki Regular Düz Bisiklet Yaka Sweatshirt")
+        self.assertEqual(t("2'Li Beyaz Patik Erkek Çorap - 15418341 | Boyner"), "2'Li Beyaz Patik Erkek Çorap")
+        self.assertEqual(t("Dream Notes A5 Defter - Fiyatı"), "Dream Notes A5 Defter")
+        self.assertEqual(t("Philips Airfryer 5000 HD9285/96"), "Philips Airfryer 5000 HD9285/96")   # temiz başlık bozulmaz
+
+    def test_kanal_uygun(self):
+        u = yayin.kanal_uygun
+        self.assertTrue(u({"karar": "dip"}))
+        self.assertTrue(u({"karar": "iyi", "gercek_yuzde": 12}))
+        self.assertFalse(u({"karar": "iyi", "gercek_yuzde": 6}))
+        self.assertTrue(u({"karar": None, "yuzde": 25}))
+        self.assertFalse(u({"karar": None, "yuzde": 12}))
+        self.assertFalse(u({"karar": None, "yuzde": None, "akakce": {"fark": 0}}))   # yalnızca "Akakçe en ucuzu" yetmez
+        self.assertFalse(u({"karar": "sisirilmis", "yuzde": 60}))
+
+    def test_metin_normal_fiyat_ve_aralik(self):
+        o = {"baslik": "Ürün", "fiyat": 900, "eski_fiyat": None, "yuzde": None, "normal": 1200, "gercek_yuzde": 25,
+             "karar": "iyi", "etiket": "Normal fiyatın %25 altında", "en_dusuk": 900, "en_yuksek": 1300, "gun": 30,
+             "magaza_ad": "Trendyol", "teyit": int(time.time()), "link": "https://www.trendyol.com/a-p-1", "ortaklik": True}
+        m = yayin.telegram_metni(o, "Düşero")
+        self.assertIn("<s>1.200 TL</s>", m)
+        self.assertIn("Son 30 gün: en düşük 900 TL · en yüksek 1.300 TL", m)
+        self.assertIn("#işbirliği", m)
+        b = yayin.telegram_metni(o, "Düşero", bitis="Mağazada stokta yok")
+        self.assertTrue(b.startswith("❌ <b>FIRSAT SONA ERDİ</b> · Mağazada stokta yok"))
+        self.assertNotIn("Mağazada gör", b)
+
+    def _yayinci(self, kayitlar):
+        class SahteDepo:
+            import threading
+            kilit = threading.Lock()
+
+            def firsatlar(self):
+                return kayitlar
+        y = yayin.Yayinci(SahteDepo(), tempfile.mkdtemp(), SABLON, "3.1")
+        y.ayar["telegram"] = {"bot_token": "t", "kanal": "@k"}
+        return y
+
+    def test_biten_firsat_mesaji_duzenlenir(self):
+        kayitlar = [ornek()]
+        y = self._yayinci(kayitlar)
+        gonderilen, duzenlenen = [], []
+        eski_g, eski_b, eski_s = yayin.telegram_gonder, yayin.telegram_bitti_isaretle, yayin.time.sleep
+        yayin.telegram_gonder = lambda tg, o, ad: gonderilen.append(o["id"]) or {"mid": 41, "tur": "foto"}
+        yayin.telegram_bitti_isaretle = lambda tg, m, neden, ad: duzenlenen.append((m["mid"], neden)) or True
+        yayin.time.sleep = lambda sn: None
+        try:
+            y._telegram(y.liste())
+            self.assertEqual(len(gonderilen), 1)
+            y._telegram(y.liste())                           # hâlâ geçerli: dokunulmaz
+            self.assertEqual(duzenlenen, [])
+            kayitlar[0]["dogrulama"] = dict(kayitlar[0]["dogrulama"], durum="red", neden="Mağazada stokta yok",
+                                            ts=int(time.time()) + 5)
+            y._telegram(y.liste())
+            y._telegram(y.liste())                           # ikinci kez düzenlenmez
+        finally:
+            yayin.telegram_gonder, yayin.telegram_bitti_isaretle, yayin.time.sleep = eski_g, eski_b, eski_s
+        self.assertEqual(duzenlenen, [(41, "Mağazada stokta yok")])
+
+    def test_fiyat_yukselince_sona_erdi(self):
+        kayitlar = [ornek()]
+        y = self._yayinci(kayitlar)
+        duzenlenen = []
+        eski_g, eski_b, eski_s = yayin.telegram_gonder, yayin.telegram_bitti_isaretle, yayin.time.sleep
+        yayin.telegram_gonder = lambda tg, o, ad: {"mid": 7, "tur": "yazi"}
+        yayin.telegram_bitti_isaretle = lambda tg, m, neden, ad: duzenlenen.append(neden) or True
+        yayin.time.sleep = lambda sn: None
+        try:
+            y._telegram(y.liste())
+            kayitlar[0]["dogrulama"] = dict(kayitlar[0]["dogrulama"], fiyat=6500)
+            y._telegram(y.liste())
+        finally:
+            yayin.telegram_gonder, yayin.telegram_bitti_isaretle, yayin.time.sleep = eski_g, eski_b, eski_s
+        self.assertEqual(duzenlenen, ["Fiyat 6.500 TL oldu"])
+
+    def test_zayif_indirim_kanala_gitmez(self):
+        y = self._yayinci([ornek(dogrulama=dict(ornek()["dogrulama"], liste_fiyati=6500),          # %8 indirim
+                                 akakce_dogrulama={"durum": "ok", "en_ucuz": 5999, "fark": 0})])
+        liste = y.liste()
+        self.assertEqual(len(liste), 1)                     # sitede durur
+        gonderilen = []
+        eski_g = yayin.telegram_gonder
+        yayin.telegram_gonder = lambda tg, o, ad: gonderilen.append(o["id"]) or True
+        try:
+            y._telegram(liste)
+        finally:
+            yayin.telegram_gonder = eski_g
+        self.assertEqual(gonderilen, [])
+
+
 if __name__ == "__main__":
     unittest.main()
