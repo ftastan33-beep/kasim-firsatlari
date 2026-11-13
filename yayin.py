@@ -232,7 +232,9 @@ def yayin_listesi(firsatlar, ayar, an=None):
 # ---------------------------------------------------------------------------
 def site_dosyalari(sablon_dizini, ayar, liste, surum):
     """{yol: bytes}. Şablondaki {{SITE_ADI}} gibi yer tutucular doldurulur."""
-    tg = (ayar.get("telegram") or {}).get("kanal", "").lstrip("@")
+    tg_ayar = ayar.get("telegram") or {}
+    # Sitedeki Telegram düğmesi kanalın herkese açık kullanıcı adına gider; "kanal" sayısal kimlik olabilir.
+    tg = (tg_ayar.get("kullanici") or ("" if tg_ayar.get("kanal", "").startswith("-") else tg_ayar.get("kanal", ""))).lstrip("@")
     yerine = {
         "{{SITE_ADI}}": html.escape(ayar.get("site_adi") or VARSAYILAN["site_adi"]),
         "{{SLOGAN}}": html.escape(ayar.get("slogan") or VARSAYILAN["slogan"]),
