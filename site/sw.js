@@ -22,5 +22,21 @@ self.addEventListener("fetch", (e) => {
     }).catch(() => caches.match("veri.json")));
     return;
   }
+  // Sayfanın kendisi: önce ağ (güncelleme ilk açılışta görünsün), ağ yoksa ya da 4 sn'de cevap gelmezse kayıtlı kopya
+  if (e.request.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith(".html")) {
+    e.respondWith(sayfaAl(e.request));
+    return;
+  }
+  // stil.css?v=… ve app.js?v=… sürüm numaralı: kayıtlı kopya yeterli
   e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
 });
+
+function sayfaAl(istek) {
+  const ag = fetch(istek, { cache: "no-store" }).then((r) => {
+    if (r.ok) { const kopya = r.clone(); caches.open(ONBELLEK).then((c) => c.put(istek, kopya)); }
+    return r;
+  });
+  const yedek = () => caches.match(istek, { ignoreSearch: true }).then((r) => r || caches.match("index.html"));
+  const sure = new Promise((coz) => setTimeout(coz, 4000)).then(yedek);
+  return Promise.race([ag.catch(yedek), sure.then((r) => r || ag)]);
+}
