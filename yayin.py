@@ -29,6 +29,8 @@ NABIZ_SN = 30 * 60               # liste değişmese de "son kontrol" saati bu a
 TAZE_SN = 6 * 3600               # mağazadaki teyidi bundan eski ürün yayından düşer
 EN_FAZLA_URUN = 150
 EN_DUSUK_INDIRIM = 10            # %10'dan az indirim "fırsat" sayılmaz (dip fiyat / Akakçe en ucuzu hariç)
+KATALOG_PARCA = 1500             # herkese açık katalog bu büyüklükte dosyalara bölünür
+BUYUK_DOSYA = 200 * 1024         # bundan büyük dosyalar GitHub'a ayrı (blob) yüklenir
 TELEGRAM_TUR_BASINA = 8
 VARSAYILAN = {
     "site_adi": "Teyitli Fırsat",
@@ -41,6 +43,9 @@ VARSAYILAN = {
     #   {"param": {"tag": "ornek-21"}}                       → linke parametre eklenir
     #   {"sablon": "https://ortak.example/?url={url_kodlu}"} → link şablona yerleştirilir
     "ortaklik": {},
+    # Ürün kataloğu (feed'lerden): sitedeki aramada çıkar. en_fazla = siteye konacak ürün sayısı (0 = katalog yayınlanmaz),
+    # aralik_saat = katalog dosyalarının en sık kaç saatte bir yenileneceği (depo gereksiz büyümesin diye)
+    "katalog": {"en_fazla": 10000, "aralik_saat": 24},
 }
 IZLEME_PARAMLARI = re.compile(
     r"^(utm_.*|tag|ref|ref_|refid|aff.*|afid|affiliate.*|partner.*|clickid|click_id|gclid|fbclid|yclid|msclkid|"
@@ -176,6 +181,35 @@ def site_dosyalari(sablon_dizini, ayar, liste, surum):
     return dosyalar
 
 
+def katalog_dosyalari(urunler, guncelleme, ayar=None):
+    """Katalog ürünlerini (katalog.Katalog.disa_aktar çıktısı) sitenin okuyacağı küçük dosyalara böler.
+    Ürün hangi dosyaya gideceğini kimliğinden alır; böylece bir fiyat değişince yalnızca o dosya yeniden yüklenir.
+    Feed'den gelen link ortaklık linki değilse ve mağaza için ortaklık ayarı varsa bizim kodumuz eklenir."""
+    import zlib
+    if not urunler:
+        return {}
+    parca = max(1, -(-len(urunler) // KATALOG_PARCA))
+    kovalar = [[] for _ in range(parca)]
+    for u in urunler:
+        link, ortak = u["link"], bool(u.get("ortaklik"))
+        if not ortak and ayar:
+            link, ortak = ortaklik_linki(link, magaza_kodu(link), ayar)
+        kovalar[zlib.crc32(u["id"].encode("utf-8")) % parca].append(
+            [kisa_id(u["id"]), u["baslik"][:140], u.get("magaza_ad") or "Mağaza", u["fiyat"], u.get("eski_fiyat") or 0,
+             link, u.get("resim") or "", int(ortak), int(bool(u.get("dip"))), u.get("dusus") or 0])
+    yaz = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":")).encode("utf-8")   # noqa: E731
+    dosyalar = {f"katalog/{i}.json": yaz(k) for i, k in enumerate(kovalar)}
+    dosyalar["katalog/ozet.json"] = yaz({"adet": len(urunler), "parca": parca, "guncelleme": int(guncelleme)})
+    return dosyalar
+
+
+def magaza_kodu(link):
+    """Ortaklık ayarındaki mağaza anahtarı (amazon, trendyol ...) için linkten kaba mağaza adı."""
+    host = (urllib.parse.urlparse(link).hostname or "").lower()
+    parcalar = [p for p in host.split(".") if p not in ("www", "m", "com", "tr", "net", "org")]
+    return parcalar[-1] if parcalar else ""
+
+
 def liste_ozeti(liste):
     """Değişiklik algılamak için: zaman damgaları hariç içerik özeti."""
     return hashlib.sha1(json.dumps([{k: v for k, v in o.items() if k != "teyit"} for o in liste],
@@ -231,6 +265,8 @@ def github_yukle(gh, dosyalar, mesaj):
     girdiler = []
     for yol, icerik in dosyalar.items():
         try:
+            if len(icerik) > BUYUK_DOSYA:               # büyük dosya tek istekte gitmesin
+                raise UnicodeDecodeError("utf-8", b"", 0, 1, "büyük")
             metin = icerik.decode("utf-8")
             if "\x00" in metin:
                 raise UnicodeDecodeError("utf-8", b"", 0, 1, "ikili")
@@ -330,9 +366,32 @@ class Yayinci:
             f = self.depo.firsatlar()
         return yayin_listesi(f, self.ayar)
 
+    def katalog_dosyalari(self, zorla=False):
+        """Feed kataloğunun site dosyaları. Sık yeniden üretilmez (varsayılan günde bir): depo şişmesin."""
+        feedler = getattr(self.depo, "feedler", None)
+        ka = self.ayar.get("katalog") or {}
+        en_fazla = int(ka.get("en_fazla") or 0)
+        if not feedler or en_fazla <= 0:
+            return {}
+        an = time.time()
+        onbellek = getattr(self, "_katalog_onbellek", None)
+        if onbellek and not zorla and an - onbellek[0] < max(1, float(ka.get("aralik_saat") or 24)) * 3600:
+            return onbellek[1]
+        dosyalar = katalog_dosyalari(feedler.katalog.disa_aktar(en_fazla), feedler.son_guncelleme() or an, self.ayar)
+        if not dosyalar and self.durum.get("katalog_parca"):
+            # Katalog boşaldı (feed'ler silindi): sitedeki arama eski ürünleri göstermesin
+            dosyalar = {"katalog/ozet.json": b'{"adet":0,"parca":0,"guncelleme":%d}' % int(an)}
+        self._katalog_onbellek = (an, dosyalar)
+        return dosyalar
+
+    def tum_dosyalar(self, liste, katalog_zorla=False):
+        dosyalar = site_dosyalari(self.sablon, self.ayar, liste, self.surum)
+        dosyalar.update(self.katalog_dosyalari(katalog_zorla))
+        return dosyalar
+
     def onizle(self, hedef):
         liste = self.liste()
-        for yol, icerik in site_dosyalari(self.sablon, self.ayar, liste, self.surum).items():
+        for yol, icerik in self.tum_dosyalar(liste, True).items():
             tam = os.path.join(hedef, *yol.split("/"))
             os.makedirs(os.path.dirname(tam), exist_ok=True)
             with open(tam, "wb") as f:
@@ -346,7 +405,8 @@ class Yayinci:
             ozet = liste_ozeti(liste)
             if not zorla and ozet == self.durum.get("ozet") and time.time() - self.durum.get("son", 0) < NABIZ_SN:
                 return None
-            dosyalar = site_dosyalari(self.sablon, self.ayar, liste, self.surum)
+            dosyalar = self.tum_dosyalar(liste, zorla)
+            self.durum["katalog_parca"] = sum(1 for y in dosyalar if y.startswith("katalog/") and y != "katalog/ozet.json")
             hashler = self.durum.setdefault("hashler", {})
             degisen = {y: i for y, i in dosyalar.items()
                        if zorla or y == "veri.json" or hashler.get(y) != hashlib.sha1(i).hexdigest()}

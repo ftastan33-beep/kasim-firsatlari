@@ -51,7 +51,7 @@ from email.utils import parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SURUM = "3.5"
+SURUM = "3.6"
 GITHUB_ACTIONS = bool(os.environ.get("GITHUB_ACTIONS"))   # GitHub sunucusunda mı çalışıyor (veri merkezi IP'si)
 VARSAYILAN_PORT = 8765
 VERI_DIZINI = os.environ.get("KASIM_FIRSAT_DIZIN") or os.path.join(os.path.expanduser("~"), ".kasim_firsat")
@@ -3306,6 +3306,48 @@ class Depo:
                                              for x in en_yeni.values()), key=lambda m: m["fiyat"])
         return sonuc
 
+    # --- ürün kataloğu (mağaza / ortaklık ağı feed'leri) -----------------------
+    feedler = None        # katalog.Feedler; katalog.py programın yanındaysa main() bağlar
+
+    def katalog_ara(self, q, sirala="uygun"):
+        if not self.feedler:
+            return {"sonuc": [], "toplam": 0}
+        sonuc, toplam = self.feedler.katalog.ara(re.sub(r"\s+", " ", q).strip()[:60], 60,
+                                                 sirala if sirala in ("uygun", "ucuz", "indirim") else "uygun")
+        alanlar = ("id", "baslik", "magaza_ad", "fiyat", "eski_fiyat", "yuzde", "link", "resim", "stok", "ortaklik",
+                   "dip", "dusus", "izlenen_gun", "son")
+        return {"sonuc": [{k: d[k] for k in alanlar} for d in sonuc], "toplam": toplam}
+
+    def feed_islem(self, veri):
+        """Ayarlar ekranından feed ekleme / kaldırma / hemen güncelleme."""
+        if not self.feedler:
+            raise ValueError("Katalog modülü (katalog.py) programın yanında bulunamadı")
+        islem = veri.get("islem")
+        if islem == "ekle":
+            url = str(veri.get("url") or "").strip()
+            if not guvenli_dis_adres(url):
+                raise ValueError("Feed adresi https:// ile başlayan bir internet adresi olmalı")
+            self.feedler.ekle(veri.get("ad"), url, bool(veri.get("ortaklik")), veri.get("sablon"))
+        elif islem == "sil":
+            if not self.feedler.sil(str(veri.get("kod") or "")):
+                raise ValueError("Feed bulunamadı")
+        elif islem == "guncelle":
+            if self.feedler.calisiyor:
+                raise ValueError("Güncelleme zaten sürüyor")
+            threading.Thread(target=self.feedler.guncelle, kwargs={"zorla": True, "bildir": self.feed_bildir},
+                             daemon=True).start()
+            time.sleep(0.3)
+        else:
+            raise ValueError("Geçersiz istek")
+        return self.feedler.ozet()
+
+    def feed_bildir(self, f, s):
+        """Feed güncellenince pencereye bir satır yazar."""
+        if self.feedler_log:
+            self.feedler_log(f, s)
+
+    feedler_log = None    # katalog.log_satiri (main bağlar)
+
     def ara(self, q):
         """Kanalların kendi arama sayfalarında anında arar; bulunanları listeye ekler."""
         q = re.sub(r"\s+", " ", q).strip()[:40]
@@ -3423,6 +3465,7 @@ class Depo:
                 "termux_bildirim": bool(shutil.which("termux-notification")),
                 "dogrulama": self.dogrulama_ozeti(),
                 "yayin": self.yayinci.ozet() if getattr(self, "yayinci", None) else None,
+                "katalog": self.feedler.ozet() if self.feedler else None,
                 "firsatlar": self.firsatlar(),
             }
 
@@ -3827,6 +3870,9 @@ class Isleyici(BaseHTTPRequestHandler):
             self._json(200, {"idler": self.depo.ara(q)})
         elif yol == "/api/arsiv":
             self._json(200, self.depo.arsiv_listesi())
+        elif yol == "/api/katalog":
+            sorgu = urllib.parse.parse_qs(parca.query)
+            self._json(200, self.depo.katalog_ara(sorgu.get("q", [""])[0], sorgu.get("sirala", ["uygun"])[0]))
         else:
             self._json(404, {"hata": "bulunamadı"})
 
@@ -3854,6 +3900,14 @@ class Isleyici(BaseHTTPRequestHandler):
                 if veri.get("islem") == "sil":
                     return self._json(200, {"ok": self.depo.urun_sil(str(veri.get("id", "")))})
                 return self._json(200, self.depo.urun_ekle(str(veri.get("url", ""))))
+            except ValueError as e:
+                return self._json(400, {"hata": str(e) or "Geçersiz istek"})
+        if yol == "/api/feed":
+            try:
+                veri = json.loads(govde or b"{}")
+                if not isinstance(veri, dict):
+                    raise ValueError("Geçersiz istek")
+                return self._json(200, {"ok": True, "katalog": self.depo.feed_islem(veri)})
             except ValueError as e:
                 return self._json(400, {"hata": str(e) or "Geçersiz istek"})
         if yol == "/api/canli":
@@ -4084,6 +4138,53 @@ def yayinci_olustur(depo):
     return depo.yayinci
 
 
+def katalog_olustur(depo):
+    """katalog.py programın yanındaysa ürün kataloğunu (feed'ler) hazırlar."""
+    dizin = os.path.dirname(os.path.abspath(__file__))
+    if not os.path.isfile(os.path.join(dizin, "katalog.py")):
+        return None
+    if dizin not in sys.path:
+        sys.path.insert(0, dizin)
+    import katalog
+    depo.feedler = katalog.Feedler(VERI_DIZINI)
+    depo.feedler_log = katalog.log_satiri
+    return depo.feedler
+
+
+def katalog_komutu(a):
+    """--feed-ekle / --feed-liste / --feed-sil / --feed-guncelle / --katalog-ara komutları."""
+    import katalog
+    fl = katalog.Feedler(VERI_DIZINI)
+    if a.feed_ekle:
+        if not a.feed_ad:
+            print("Mağaza adını da verin:  --feed-ekle ADRES --feed-ad \"Mağaza Adı\"")
+            return
+        try:
+            f = fl.ekle(a.feed_ad, a.feed_ekle, a.feed_ortaklik, a.feed_sablon, dosya_izin=True)
+        except ValueError as e:
+            print("Eklenemedi:", e)
+            return
+        print(f"Feed eklendi: {f['ad']} ({f['kod']}). İlk okuma yapılıyor...")
+        katalog.log_satiri(f, fl.birini_guncelle(f))
+    elif a.feed_sil:
+        print("Feed ve ürünleri silindi." if fl.sil(a.feed_sil) else "Bu kodla feed yok; kodları görmek için: --feed-liste")
+    elif a.feed_guncelle:
+        if not fl.ayar["feedler"]:
+            print("Henüz feed eklenmemiş. Ekleme: --feed-ekle ADRES --feed-ad \"Mağaza Adı\"")
+        fl.guncelle(zorla=True, bildir=katalog.log_satiri)
+    elif a.katalog_ara:
+        sonuc, toplam = fl.katalog.ara(a.katalog_ara, 20)
+        print(f"“{a.katalog_ara}” için katalogda {toplam} ürün" + (" (ilk 20):" if toplam > 20 else ":" if toplam else ""))
+        for d in sonuc:
+            print(f"  {fiyat_yaz(d['fiyat']):>12}  {d['magaza_ad']}: {d['baslik'][:80]}" + ("" if d["stok"] else "  (stokta yok)"))
+        return
+    oz = fl.ozet()
+    print(f"\nKatalog: {oz['toplam']} ürün · {len(oz['feedler'])} feed · {oz['aralik_saat']} saatte bir güncellenir")
+    for f in oz["feedler"]:
+        durum = ("HATA: " + f["hata"]) if f["hata"] else (f"{f['adet']} ürün ({f['stokta']} stokta)" if f["son"] else "henüz okunmadı")
+        print(f"  [{f['kod']}] {f['ad']} · {durum}" + (" · ortaklık linki" if f["ortaklik"] else ""))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Kasım Fırsatları — telefonda çalışan indirim takipçisi")
     ap.add_argument("--port", type=int, default=VARSAYILAN_PORT, help="yerel sayfanın portu (varsayılan 8765)")
@@ -4095,6 +4196,14 @@ def main():
     ap.add_argument("--yayin-kur", action="store_true", help="herkese açık site (GitHub Pages) ayarlarını yap")
     ap.add_argument("--yayin-onizle", metavar="KLASOR", help="herkese açık siteyi mevcut veriyle bu klasöre yaz (yüklemeden)")
     ap.add_argument("--yayin-simdi", action="store_true", help="bir kez yenile, doğrula ve herkese açık siteyi hemen yükle")
+    ap.add_argument("--feed-ekle", metavar="ADRES", help="ürün feed'i ekle (XML/CSV adresi ya da indirilmiş dosya); --feed-ad ile birlikte")
+    ap.add_argument("--feed-ad", metavar="AD", help="eklenen feed'in mağaza adı (ör. \"Teknosa\")")
+    ap.add_argument("--feed-ortaklik", action="store_true", help="feed'deki linkler ortaklık (affiliate) linki")
+    ap.add_argument("--feed-sablon", metavar="SABLON", help="düz linkleri ortaklık linkine çeviren şablon (içinde {url_kodlu})")
+    ap.add_argument("--feed-liste", action="store_true", help="ekli feed'leri ve ürün sayılarını göster")
+    ap.add_argument("--feed-sil", metavar="KOD", help="feed'i ve ürünlerini sil (kod: --feed-liste)")
+    ap.add_argument("--feed-guncelle", action="store_true", help="tüm feed'leri şimdi indir ve kataloğu güncelle")
+    ap.add_argument("--katalog-ara", metavar="KELIME", help="ürün kataloğunda ara (deneme için)")
     ap.add_argument("--ag", action="store_true",
                     help="aynı Wi-Fi'deki telefondan açılabilsin (bilgisayarda çalıştırırken kullanın)")
     a = ap.parse_args()
@@ -4116,8 +4225,12 @@ def main():
         import yayin
         os.makedirs(VERI_DIZINI, exist_ok=True)
         return yayin.kurulum_sihirbazi(VERI_DIZINI)
+    if a.feed_ekle or a.feed_liste or a.feed_sil or a.feed_guncelle or a.katalog_ara:
+        os.makedirs(VERI_DIZINI, exist_ok=True)
+        return katalog_komutu(a)
     if a.yayin_onizle or a.yayin_simdi:
         depo = Depo()
+        katalog_olustur(depo)
         yy = yayinci_olustur(depo)
         if not yy:
             print("Yayın modülü (yayin.py ve site/ klasörü) programın yanında bulunamadı.")
@@ -4158,6 +4271,11 @@ def main():
         Isleyici.ag_adresi = f"http://{ip}:{a.port}/?k={Isleyici.anahtar}" if ip else None
     threading.Thread(target=depo.dongu, daemon=True).start()
     threading.Thread(target=depo.dogrulayici_dongu, daemon=True).start()   # Aşama 2: doğrulayıcı
+    fl = katalog_olustur(depo)
+    if fl:
+        threading.Thread(target=fl.dongu, kwargs={"bildir": depo.feed_bildir}, daemon=True).start()   # ürün kataloğu
+        if fl.ayar["feedler"]:
+            print(f"Ürün kataloğu: {len(fl.ayar['feedler'])} feed · {fl.ayar['aralik_saat']} saatte bir güncellenir")
     yy = yayinci_olustur(depo)
     if yy and yy.hazir():
         threading.Thread(target=yy.dongu, daemon=True).start()               # Aşama 3: herkese açık site
@@ -5178,7 +5296,7 @@ function listeCiz(){
           : `<label class="anahtar"><input type="checkbox" id="ikinciEl" ${S.f.ikinciEl ? "checked" : ""}> 2. el ürünler</label>`}
       </div>`}
       ${S.sekme === "kupon" && !arama ? `<div class="cipler">${[["hepsi","Hepsi"],["kod","Kupon kodları"],["kampanya","Kampanyalar"]].map(([v,a]) => `<button type="button" class="cip" data-kupontur="${v}" aria-pressed="${S.f.kuponTur === v}">${a}</button>`).join("")}</div>` : ""}
-    </div>${arama ? aramaBas : not}${govde}`;
+    </div>${arama ? aramaBas : not}${arama && !d.length ? katalogBolumu() : ""}${govde}${arama && d.length ? katalogBolumu() : ""}`;
 }
 
 function takvimCiz(){
@@ -5242,9 +5360,21 @@ function ayarCiz(){
       <button type="button" class="kaydet" id="bildirimAc" style="margin-top:10px">Telefona bildirimi aç</button>`}
     ${v.termux_bildirim ? `<div class="ipucu">Termux:API bildirimi de açık (bu telefonda).</div>` : ""}
   </section>`;
+  const kt = v.katalog;
+  const feedDurum = f => f.hata ? "Hata: " + f.hata : f.son ? `${nf.format(f.adet)} ürün (${nf.format(f.stokta)} stokta) · son okuma ${saat(new Date(f.son * 1000).toISOString())}` : "Henüz okunmadı; birkaç dakika içinde okunur";
+  const feedPanel = kt ? `<section class="telefon-panel"><h2>Ürün kataloğu (mağaza feed’leri)</h2>
+    <div class="ipucu" style="margin-top:0">Bir mağazanın ya da satış ortaklığı ağının (ör. Admitad) verdiği <b>ürün listesi adresini</b> (XML ya da CSV feed) ekleyin. Program listeyi ${esc(kt.aralik_saat)} saatte bir indirir; ürünler buradaki ve herkese açık sitedeki aramada çıkar. Mağaza sayfaları taranmaz. Katalogda şu an <b>${nf.format(kt.toplam)}</b> ürün var${kt.calisiyor ? " · <b>güncelleniyor…</b>" : ""}.</div>
+    ${kt.feedler.map(f => `<div class="kanal"><span class="nokta ${f.hata ? "hata" : f.son ? "ok" : ""}"></span><div class="ad"><b>${esc(f.ad)}</b>${f.ortaklik ? " · ortaklık linki" : ""}<div>${esc(feedDurum(f))}</div></div><button type="button" data-feedsil="${esc(f.kod)}">Kaldır</button></div>`).join("")}
+    <label for="feedAd">Mağaza adı</label><input type="text" id="feedAd" placeholder="ör. Teknosa" autocomplete="off" maxlength="40">
+    <label for="feedUrl">Feed adresi</label><input type="text" inputmode="url" id="feedUrl" placeholder="https://… (XML ya da CSV)" autocomplete="off">
+    <label class="anahtar" style="margin-top:10px"><input type="checkbox" id="feedOrtak"> Bu listedeki linkler ortaklık (affiliate) linki</label>
+    <div class="ipucu">Ortaklık ağından aldığınız feed’de linkler zaten sizin kodunuzu taşır; kutuyu işaretleyin ki sitede “iş birliği” olarak belirtilsin.</div>
+    <div class="satir" style="margin-top:10px"><button type="button" class="cip" id="feedEkle" style="flex:none">Feed ekle</button>${kt.feedler.length ? `<button type="button" class="cip" id="feedGuncelle" style="flex:none"${kt.calisiyor ? " disabled" : ""}>Şimdi güncelle</button>` : ""}</div>
+  </section>` : "";
   $("#icerik").innerHTML = `<div class="ayar">
     ${telefonPanel}
     ${bildirimPanel}
+    ${feedPanel}
     <h2>Kaynak kanallar</h2>
     <div class="ipucu">Herkese açık Telegram fırsat kanalları. Kanal adını ya da t.me bağlantısını ekleyin.</div>
     ${kanallar}
@@ -5274,6 +5404,33 @@ function ayarCiz(){
     </ul>
     <p class="not">Bağlantılar kanalların kendi bağlantılarıdır (ortaklık/affiliate bağlantısı olabilir). Program hiçbir hesaba giriş yapmaz, ödeme bilgisi istemez; veriler yalnızca programın çalıştığı cihazda saklanır. Sürüm ${esc(v.surum)}</p>
   </div>`;
+}
+
+// Ürün kataloğu: mağaza feed'lerinden gelen ürünlerde arama (kanallardaki fırsatlardan ayrı gösterilir)
+function katalogAra(q){
+  const kt = S.veri && S.veri.katalog;
+  if (!kt || !kt.toplam || S.veri.statik || S.veri.onizleme) { S.kat = null; return; }
+  const sira = S.f.sirala === "ucuz" ? "ucuz" : S.f.sirala === "indirim" ? "indirim" : "uygun";
+  const k = sadeJS(q) + "|" + sira;
+  if (S.kat && S.kat.anahtar === k) return;
+  S.kat = {anahtar: k, yukleniyor: true};
+  fetch("/api/katalog?q=" + encodeURIComponent(q) + "&sirala=" + sira, {cache: "no-store"}).then(r => r.json())
+    .then(j => { if (!S.kat || S.kat.anahtar !== k) return; S.kat = {anahtar: k, sonuc: j.sonuc || [], toplam: j.toplam || 0}; if (aramaVar()) cizGovde(); })
+    .catch(() => { if (S.kat && S.kat.anahtar === k) S.kat = {anahtar: k, sonuc: [], toplam: 0}; });
+}
+function katalogBolumu(){
+  const k = S.kat;
+  if (!k || !aramaVar()) return "";
+  if (k.yukleniyor) return `<div class="ipucu">Ürün kataloğunda aranıyor…</div>`;
+  if (!k.sonuc.length) return "";
+  const satir = x => {
+    const not = [x.stok ? "" : "stokta yok", x.yuzde ? `%${x.yuzde} indirimli (mağazanın beyanı)` : "", x.dip ? "📉 izlenen dönemin en düşüğü" : (x.dusus >= 3 ? `son günlerde %${x.dusus} ucuzladı` : ""), x.ortaklik ? "ortaklık linki" : ""].filter(Boolean).join(" · ");
+    return `<tr${x.stok ? "" : ' style="opacity:.55"'}><td>${link(x.link) ? `<a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer nofollow">${esc(x.baslik)}</a>` : esc(x.baslik)}<br><small>${esc(x.magaza_ad)}${not ? " · " + esc(not) : ""}</small></td><td class="sag">${tl(x.fiyat)}${x.eski_fiyat ? `<br><small><s>${tl(x.eski_fiyat)}</s></small>` : ""}</td></tr>`;
+  };
+  return `<section class="eski-liste"><h2 class="bolum">Ürün kataloğunda <span class="say">${k.toplam}</span></h2>
+    <div class="not">Mağazaların verdiği ürün listelerinden (feed) gelen <b>güncel liste fiyatları</b>. Bunlar fırsat paylaşımı değildir ve mağaza sayfasında tek tek doğrulanmamıştır; üstü çizili fiyat mağazanın beyanıdır. Sıralama kutusu bu listeyi de sıralar.</div>
+    <table class="d-tablo"><thead><tr><th>Ürün</th><th class="sag">Fiyat</th></tr></thead><tbody>${k.sonuc.map(satir).join("")}</tbody></table>
+    ${k.toplam > k.sonuc.length ? `<div class="ipucu">İlk ${k.sonuc.length} gösteriliyor; aramayı daraltın (ör. model adı ekleyin).</div>` : ""}</section>`;
 }
 
 async function arsivYukle(){
@@ -5887,6 +6044,21 @@ document.addEventListener("click", async e => {
     } catch (err) { toast(err.message); }
     return;
   }
+  if (t.id === "feedEkle" || t.id === "feedGuncelle" || t.dataset.feedsil) {
+    const govde = t.id === "feedEkle" ? {islem: "ekle", ad: $("#feedAd").value.trim(), url: $("#feedUrl").value.trim(), ortaklik: $("#feedOrtak").checked}
+      : t.id === "feedGuncelle" ? {islem: "guncelle"} : {islem: "sil", kod: t.dataset.feedsil};
+    if (govde.islem === "ekle" && (govde.ad.length < 2 || !/^https?:\/\//i.test(govde.url))) { toast("Mağaza adını ve https:// ile başlayan feed adresini yazın"); return; }
+    if (govde.islem === "sil" && !confirm("Bu feed ve katalogdaki ürünleri kaldırılsın mı?")) return;
+    t.disabled = true;
+    try {
+      const r = await fetch("/api/feed", {method:"POST", headers:{"Content-Type":"application/json","X-Kasim":"1"}, body: JSON.stringify(govde)});
+      const j = await r.json(); if (!r.ok) throw new Error(j.hata || "İşlem yapılamadı");
+      toast(govde.islem === "ekle" ? "Feed eklendi · birkaç dakika içinde okunur" : govde.islem === "sil" ? "Feed kaldırıldı" : "Güncelleme başladı");
+      if (document.activeElement) document.activeElement.blur();
+      S.veri.katalog = j.katalog; S.kat = null; ayarCiz(); qrCiz(); setTimeout(yukle, 4000);
+    } catch (err) { toast(err.message); t.disabled = false; }
+    return;
+  }
   if (t.id === "konuKopyala") {
     const k = S.veri.ayarlar.ntfy_konu;
     try { await navigator.clipboard.writeText(k); toast("Konu adı kopyalandı"); } catch (err) { toast(k); }
@@ -5945,6 +6117,8 @@ document.addEventListener("input", e => {
     clearTimeout(S.araZaman);
     const q = S.f.ara.trim();
     if (q.length >= 3) S.araZaman = setTimeout(() => kanallardaAra(q), 700);
+    clearTimeout(S.katZaman);
+    if (q.length >= 2) S.katZaman = setTimeout(() => katalogAra(q), 300); else S.kat = null;
   }
 });
 document.addEventListener("keydown", e => {
@@ -5955,7 +6129,7 @@ document.addEventListener("keydown", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.id === "min") { S.f.min = +t.value; sakla(); ciz(); }
-  else if (t.id === "sirala") { S.f.sirala = t.value; sakla(); ciz(); }
+  else if (t.id === "sirala") { S.f.sirala = t.value; sakla(); ciz(); if (aramaVar()) katalogAra(S.f.ara.trim()); }
   else if (t.id === "ikinciEl") { S.f.ikinciEl = t.checked; sakla(); ciz(); }
   else if (t.id === "gecmisGizle") { S.f.gecmisGizle = t.checked; sakla(); ciz(); }
   else if (t.id === "sure") { S.f.sure = Object.assign({}, S.f.sure, {[S.sekme]: +t.value}); sakla(); ciz(); }

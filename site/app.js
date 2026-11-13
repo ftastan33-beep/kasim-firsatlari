@@ -4,7 +4,10 @@ const ESKI_TEYIT_SN = 12 * 3600;   // teyidi bundan eski ürün gösterilmez
 const YENILE_MS = 3 * 60 * 1000;
 
 const $ = (s) => document.querySelector(s);
+const KATALOG_SAYFA = 30;          // katalog sonuçları bu kadar bu kadar gösterilir
 const durum = { urunler: [], guncelleme: 0, magaza: "", ara: "", sirala: "yeni", sonZiyaret: 0 };
+// Katalog: mağazaların ürün listelerinden gelen ürünler. Yalnızca arama yapılınca indirilir.
+const katalog = { ozet: null, urunler: null, yukleniyor: false, yok: false, limit: KATALOG_SAYFA };
 
 function sakla(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 function oku(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -95,6 +98,82 @@ function kart(u) {
   return k;
 }
 
+async function katalogYukle() {
+  if (katalog.urunler || katalog.yukleniyor || katalog.yok) return;
+  katalog.yukleniyor = true;
+  katalogCiz();
+  try {
+    const r = await fetch("katalog/ozet.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const oz = await r.json();
+    if (!oz.parca) throw new Error("boş");
+    const parcalar = new Array(oz.parca);
+    let sira = 0;
+    const isci = async () => {
+      while (sira < oz.parca) {
+        const i = sira++;
+        const p = await fetch("katalog/" + i + ".json?v=" + oz.guncelleme);
+        if (!p.ok) throw new Error(p.status);
+        parcalar[i] = await p.json();
+      }
+    };
+    await Promise.all([isci(), isci(), isci(), isci()]);
+    katalog.urunler = parcalar.flat().map((k) => ({
+      id: k[0], baslik: k[1], magaza_ad: k[2], fiyat: k[3], eski_fiyat: k[4] || null, link: k[5], resim: k[6] || null,
+      ortaklik: !!k[7], dip: !!k[8], dusus: k[9] || 0, s: sade(k[1] + " " + k[2]),
+      yuzde: k[4] > k[3] * 1.01 ? Math.round((k[4] - k[3]) / k[4] * 100) : null,
+    }));
+    katalog.ozet = oz;
+  } catch (e) {
+    katalog.yok = true;                 // katalog yayınlanmamış ya da indirilemedi: site eskisi gibi çalışır
+    setTimeout(() => { katalog.yok = false; }, 5 * 60 * 1000);
+  }
+  katalog.yukleniyor = false;
+  ciz();
+}
+
+function katalogKart(u) {
+  const k = kart({ ...u, kosul: null, akakce: null, ilk: 0, teyit: 0,
+    dip: u.dip ? "İzlediğimiz dönemin en düşük fiyatı" : (u.dusus >= 3 ? `Son günlerde %${u.dusus} ucuzladı` : null) });
+  k.classList.add("katalog");
+  k.querySelector(".yeni").hidden = true;
+  const t = k.querySelector(".teyit");
+  t.textContent = "Mağazanın bildirdiği fiyat";
+  t.title = "Bu fiyat mağazanın ürün listesinden alındı; mağaza sayfasında tek tek kontrol edilmedi.";
+  return k;
+}
+
+// Arama sonuçlarını katalogdan tamamlar. firsatLinkleri: yukarıdaki doğrulanmış listede zaten gösterilenler.
+function katalogCiz(q, firsatSayisi, firsatLinkleri) {
+  const bolum = $("#katalog-bolum");
+  if (!q || !q.length || (!katalog.urunler && !katalog.yukleniyor)) { bolum.hidden = true; return 0; }
+  const liste = $("#katalog"), daha = $("#katalog-daha");
+  liste.textContent = "";
+  bolum.hidden = false;
+  if (!katalog.urunler) {
+    $("#katalog-baslik").textContent = "Katalogda aranıyor…";
+    $("#katalog-not").textContent = "";
+    daha.hidden = true;
+    return 0;
+  }
+  let l = katalog.urunler.filter((u) => q.every((p) => u.s.includes(p)) && !firsatLinkleri.has(u.link));
+  const tam = " " + q.join(" ") + " ";
+  const puan = (u) => ((" " + u.s + " ").includes(tam) ? 0 : 2) + ((" " + u.s).includes(" " + q[0]) ? 0 : 1);
+  if (durum.sirala === "indirim") l.sort((a, b) => (b.yuzde || 0) - (a.yuzde || 0) || a.fiyat - b.fiyat);
+  else if (durum.sirala === "ucuz") l.sort((a, b) => a.fiyat - b.fiyat);
+  else l.sort((a, b) => puan(a) - puan(b) || a.s.length - b.s.length || a.fiyat - b.fiyat);
+  if (!l.length) { bolum.hidden = true; return 0; }
+  $("#katalog-baslik").textContent = `Katalogda ${l.length} ürün`;
+  $("#katalog-not").textContent = "Bu ürünler mağazaların bize ilettiği ürün listelerinden gelir (son güncelleme " +
+    once(katalog.ozet.guncelleme) + "). Fiyat mağazanın bildirdiği fiyattır; yukarıdaki fırsatlar gibi tek tek teyit edilmemiştir.";
+  const parca = document.createDocumentFragment();
+  l.slice(0, katalog.limit).forEach((u) => parca.append(katalogKart(u)));
+  liste.append(parca);
+  daha.hidden = l.length <= katalog.limit;
+  daha.textContent = `Daha fazla göster (${l.length - katalog.limit})`;
+  return l.length;
+}
+
 function ciz() {
   magazaCipleri();
   const q = sade(durum.ara).split(/\s+/).filter(Boolean);
@@ -108,12 +187,28 @@ function ciz() {
   const parca = document.createDocumentFragment();
   l.forEach((u) => parca.append(kart(u)));
   liste.append(parca);
-  $("#bos").hidden = l.length > 0 || !durum.guncelleme;
+  const katalogSayisi = katalogCiz(q, l.length, new Set(l.map((u) => u.link)));
+  const bos = $("#bos");
+  bos.hidden = l.length > 0 || !durum.guncelleme;
+  if (!bos.hidden && q.length) {
+    bos.textContent = katalog.yukleniyor ? "Doğrulanmış fırsatlarda yok; katalogda aranıyor…"
+      : katalogSayisi ? "Bu ürün için şu an doğrulanmış bir fırsat yok. Aşağıda katalogdaki güncel fiyatları görebilirsiniz."
+      : "Aradığınız ürün şu an listemizde yok. Daha kısa yazmayı (ör. yalnızca marka ya da model) deneyin.";
+  } else if (!bos.hidden) bos.textContent = "Bu filtreye uyan fırsat yok. Filtreyi temizleyin ya da biraz sonra tekrar bakın.";
 }
 
 // --- arama / sıralama ---
 let araZaman;
-$("#ara").addEventListener("input", (e) => { clearTimeout(araZaman); araZaman = setTimeout(() => { durum.ara = e.target.value; ciz(); }, 150); });
+$("#ara").addEventListener("input", (e) => {
+  clearTimeout(araZaman);
+  araZaman = setTimeout(() => {
+    durum.ara = e.target.value;
+    katalog.limit = KATALOG_SAYFA;
+    if (sade(durum.ara).trim().length >= 2) katalogYukle();
+    ciz();
+  }, 150);
+});
+$("#katalog-daha").addEventListener("click", () => { katalog.limit += KATALOG_SAYFA; ciz(); });
 $("#sirala").addEventListener("change", (e) => { durum.sirala = e.target.value; sakla("sirala", durum.sirala); ciz(); });
 durum.sirala = oku("sirala") || "yeni";
 $("#sirala").value = durum.sirala;

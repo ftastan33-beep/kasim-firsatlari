@@ -172,3 +172,22 @@ fiyat geçmişi girdileri ve karşılaştırmalar bir kez silinir, sonraki yenil
 - Programın fiyat kaydına göre indirim artık tek bir uç değere değil, kayıtların ortancasına göre hesaplanır. Az kayıtla
   %50+ çıkan oranlar (genelde farklı paket/varyant) indirim sayılmaz, “kontrol et” olarak işaretlenir.
 - Başlığı yalnızca bağlantı (“🛒 https://…”) olan paylaşımlarda ürün adı doğru satırdan alınır.
+
+## 3.6 — Ürün kataloğu (mağaza feed'leri)
+
+Arama artık yalnızca fırsat paylaşımlarında değil, **mağazaların kendi verdiği ürün listelerinde** (feed) de yapılır.
+Feed; mağazanın ya da satış ortaklığı ağının (ör. Admitad) hazırladığı XML/CSV dosyasıdır. Mağaza sayfaları taranmaz.
+
+- **Ekleme:** Ayarlar → *Ürün kataloğu* → mağaza adı + feed adresi → *Feed ekle*. Komutla:
+  `py kasim_firsat.py --feed-ekle ADRES --feed-ad "Mağaza"` (indirilmiş dosya yolu da olur). Ayrıntı: `KATALOG-KURULUM.txt`.
+- **Biçimler:** Google Alışveriş XML, YML (Admitad), Türkiye'deki e-ticaret altyapılarının XML'leri, CSV; `.gz` / `.zip`.
+- **Güncelleme:** 6 saatte bir. Okuma yarıda kesilir ya da feed boş gelirse katalog eski halinde kalır.
+- **Fiyat geçmişi:** her fiyat değişikliği kaydedilir. En az 14 gündür izlenen ürün kayıtlı en düşük fiyatına inerse
+  "izlenen dönemin en düşüğü" olarak işaretlenir. Mağazanın üstü çizili fiyatı "mağazanın beyanı" olarak gösterilir.
+- **Programda:** arama sonuçlarının altında "Ürün kataloğunda" bölümü (fırsatlardan ayrı).
+- **Herkese açık sitede:** arama yapılınca katalog indirilir ve "Katalogda N ürün" bölümünde gösterilir; kartta
+  "Mağazanın bildirdiği fiyat" yazar (teyitli fırsatlardan ayrı). Varsayılan en fazla 10.000 ürün, günde bir yenilenir
+  (`yayin.json` → `"katalog": {"en_fazla": 10000, "aralik_saat": 24}`; `en_fazla: 0` kataloğu siteye koymaz).
+- **Ortaklık:** ağdan gelen feed'in linkleri zaten ortaklık linkidir (kutuyu işaretleyin). Mağazanın düz feed'inde
+  linkler `yayin.json`daki `ortaklik` ayarıyla ya da `--feed-sablon "https://…{url_kodlu}"` ile çevrilir.
+- Komutlar: `--feed-liste`, `--feed-sil KOD`, `--feed-guncelle`, `--katalog-ara "kelime"`.

@@ -1,0 +1,46 @@
+ÜRÜN KATALOĞU — MAĞAZA FEED'İ EKLEME
+====================================
+
+Ne işe yarar?
+  Aramada "istediğim ürün çıkmıyor" sorununu çözer. Mağazanın kendi hazırladığı ürün listesi (feed)
+  programa eklenir; o mağazanın bütün ürünleri hem programdaki hem herkese açık sitedeki aramada çıkar.
+  Program mağaza sayfalarını taramaz; yalnızca mağazanın verdiği dosyayı 6 saatte bir indirir.
+
+FEED ADRESİ NEREDEN ALINIR?
+
+  A) Satış ortaklığı ağı (takipçi şartı yok)
+     1. Ağa "yayıncı" olarak kaydolun (ör. Admitad). Platform olarak Telegram kanalını ve siteyi ekleyin.
+     2. Türkiye'deki mağaza programlarına başvurun; onay mağazadan mağazaya 1 gün - 2 hafta sürer.
+     3. Onaylanan programın sayfasında "ürün feed'i / product feed" bölümünden XML ya da CSV linkini
+        kopyalayın. Bu linkteki ürün bağlantıları sizin ortaklık kodunuzu taşır.
+     Not: menü adları ağa göre değişir; bulamazsanız ağın destek sayfasında "product feed" diye aratın.
+
+  B) Mağazadan doğrudan
+     Orta ve küçük mağazaların çoğunda Google Alışveriş için hazır bir XML feed vardır. Kısa bir
+     e-postayla isteyin: "Ürünlerinizi fırsat sitemizde/kanalımızda listelemek istiyoruz; Google
+     Merchant ya da XML ürün feed adresinizi paylaşabilir misiniz?"
+
+PROGRAMA EKLEME
+  1. Kasim-Firsatlari-Baslat.bat ile programı açın.
+  2. Üstteki sekmelerden "Ayarlar" → "Ürün kataloğu (mağaza feed'leri)" bölümü.
+  3. "Mağaza adı"na mağazanın adını, "Feed adresi"ne kopyaladığınız linki yapıştırın.
+  4. Link ortaklık ağından geldiyse "Bu listedeki linkler ortaklık (affiliate) linki" kutusunu işaretleyin.
+  5. "Feed ekle"ye basın. Birkaç dakika içinde mağaza adının yanında yeşil nokta ve ürün sayısı görünür.
+  Beklenen sonuç: herhangi bir sekmede arama yapınca altta "Ürün kataloğunda N" bölümü çıkar.
+
+  Link yerine bilgisayara indirdiğiniz dosyayı eklemek için (siyah pencerede, program klasöründe):
+     py kasim_firsat.py --feed-ekle "C:\Users\...\Downloads\urunler.xml" --feed-ad "Mağaza Adı"
+
+HERKESE AÇIK SİTE
+  Site kuruluysa (YAYIN-KURULUM.txt) katalog kendiliğinden siteye de gider: en fazla 10.000 ürün,
+  günde bir kez. Hemen göndermek için:  py kasim_firsat.py --yayin-simdi
+
+SORUN GİDERME
+  Kırmızı nokta + "erişime izin vermedi (HTTP 403)"  → program onayı henüz gelmemiş ya da linkin süresi
+                                                       dolmuş; ağdan linki yeniden kopyalayın.
+  "bir web sayfası döndürdü"                         → kopyalanan adres feed değil, giriş sayfası.
+  "okunabilir ürün bulunamadı"                       → feed'de TL fiyat yok (dolar/euro fiyatlar alınmaz)
+                                                       ya da biçim tanınmadı; dosyanın ilk satırlarını gönderin.
+  Ürün sayısı az                                     → fiyatı, adı ya da linki olmayan satırlar atlanır.
+  Listeyi görmek / elle güncellemek                  → py kasim_firsat.py --feed-liste
+                                                       py kasim_firsat.py --feed-guncelle
