@@ -189,27 +189,55 @@ class Yukleme(unittest.TestCase):
     def test_degismeyen_liste_yuklenmez_ve_telegram_ilk_turda_dokmez(self):
         klasor = tempfile.mkdtemp()
 
+        sabit = [ornek()]                                   # her çağrıda aynı zaman damgaları
+
         class SahteDepo:
             import threading
             kilit = threading.Lock()
 
             def firsatlar(self):
-                return [ornek()]
+                return sabit
         y = yayin.Yayinci(SahteDepo(), klasor, SABLON, "3.1")
         y.ayar["github"] = {"depo": "a/b", "token": "x", "dal": "main"}
         y.ayar["telegram"] = {"bot_token": "t", "kanal": "@k"}
         yuklenen, gonderilen = [], []
-        eski_y, eski_t = yayin.github_yukle, yayin.telegram_gonder
+        eski_y, eski_t, eski_s = yayin.github_yukle, yayin.telegram_gonder, yayin.time.sleep
         yayin.github_yukle = lambda gh, dosyalar, mesaj: yuklenen.append(set(dosyalar)) or "sha"
         yayin.telegram_gonder = lambda tg, o, ad: gonderilen.append(o["id"]) or True
+        yayin.time.sleep = lambda sn: None
         try:
             self.assertEqual(y.yayinla(), 1)
             self.assertIsNone(y.yayinla())                   # liste aynı: yükleme yok
             self.assertEqual(y.yayinla(zorla=True), 1)
         finally:
-            yayin.github_yukle, yayin.telegram_gonder = eski_y, eski_t
+            yayin.github_yukle, yayin.telegram_gonder, yayin.time.sleep = eski_y, eski_t, eski_s
         self.assertIn("index.html", yuklenen[0])
-        self.assertEqual(gonderilen, [])                      # ilk çalıştırmada eldeki liste kanala dökülmez
+        # İlk çalıştırmada yalnızca en iyi birkaç fırsat gider; aynı fırsat ikinci kez gönderilmez
+        self.assertEqual(gonderilen, [sabit and yayin.yayin_listesi(sabit, {})[0]["id"]])
+
+    def test_telegram_ilk_tur_sisirilmisi_atlar(self):
+        an = time.time()
+        gecmis = [[int(an - (60 - i) * 86400), 5999] for i in range(0, 60, 10)]    # fiyat hep aynı → şişirilmiş
+        sabit = [ornek(fiyat_gecmisi=gecmis)]
+
+        class SahteDepo:
+            import threading
+            kilit = threading.Lock()
+
+            def firsatlar(self):
+                return sabit
+        y = yayin.Yayinci(SahteDepo(), tempfile.mkdtemp(), SABLON, "3.1")
+        y.ayar["telegram"] = {"bot_token": "t", "kanal": "@k"}
+        liste = y.liste()
+        self.assertEqual(liste[0]["karar"], "sisirilmis")
+        gonderilen = []
+        eski_t = yayin.telegram_gonder
+        yayin.telegram_gonder = lambda tg, o, ad: gonderilen.append(o["id"]) or True
+        try:
+            y._telegram(liste)
+        finally:
+            yayin.telegram_gonder = eski_t
+        self.assertEqual(gonderilen, [])
 
 
 if __name__ == "__main__":

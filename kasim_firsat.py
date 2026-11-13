@@ -1718,11 +1718,51 @@ def sayfa_getir_guclu(url, zaman_asimi=25):
 URUN_SAYFASI_RE = re.compile(r"/dp/|/gp/product/|/gp/aw/d/|-p-\d|-pm-|/urun/|/product/|/p/|-p\d|\.html$|/[^/]*\d{5,}")
 
 
-def canli_fiyat_getir(url, tarayici=None):
+# Aracı fırsat siteleri (Onual vb.) kendi sayfalarına yönlendirir; gerçek mağaza linki sayfanın içindedir.
+ARACI_URL_PARAM = ("url", "u", "target", "redirect_url", "to")
+
+
+def _icten_magaza_linki(href):
+    """'https://zxro.com/u/?redirect=1&url=https%3A%2F%2Fwww.pazarama.com%2F...' → içteki mağaza linki (yoksa None)."""
+    try:
+        parca = urllib.parse.urlparse(href)
+    except ValueError:
+        return None
+    if magaza_alani(href):
+        return href
+    q = urllib.parse.parse_qs(parca.query)
+    for ad in ARACI_URL_PARAM:
+        for deger in q.get(ad, []):
+            if deger.startswith("http") and magaza_alani(deger):
+                return deger
+    return None
+
+
+def araci_sayfadan_magaza_linki(h):
+    """Aracı sitenin ürün sayfasından mağazanın ÜRÜN sayfası linkini bulur. Önce 'Ürüne Git' düğmesi."""
+    adaylar = []
+    for m in re.finditer(r'<a\b[^>]*?href\s*=\s*["\']([^"\']+)["\'][^>]*>(.*?)</a>', h, re.I | re.S):
+        href = html.unescape(m.group(1))
+        ic = _icten_magaza_linki(href)
+        if not ic:
+            continue
+        yol = urllib.parse.urlparse(ic).path.lower()
+        if re.search(r"/arama|/magaza/|/sr$|/s$|/kampanya|/butik/|/liste/|/store/", yol) or not URUN_SAYFASI_RE.search(yol):
+            continue
+        metin = kucuk(re.sub(r"<[^>]+>", " ", m.group(2)))
+        oncelik = 0 if re.search(r"ürüne git|urune git|satın al|mağazaya git|siteye git", metin) else 1
+        adaylar.append((oncelik, len(adaylar), ic))
+    return min(adaylar)[2] if adaylar else None
+
+
+def canli_fiyat_getir(url, tarayici=None, _derinlik=0):
     """Mağaza sayfasını bir kez açar, güncel fiyatı ve stoğu okur.
     durum: ok / stok_yok / engellendi / urun_degil / bulunamadi / hata"""
     if not url or not guvenli_dis_adres(url):
         return {"durum": "hata", "mesaj": "Bu paylaşımda mağaza bağlantısı yok."}
+    ic = _icten_magaza_linki(url)
+    if ic and ic != url and _derinlik == 0:          # yönlendirme linkinin içinde mağaza linki açıkça duruyor
+        return canli_fiyat_getir(ic, tarayici, _derinlik + 1)
     s = magaza_sayfasi_getir(url, tarayici=tarayici)
     son, motor = s.get("url") or url, s.get("motor")
     if s["durum"] == "engellendi":
@@ -1732,6 +1772,14 @@ def canli_fiyat_getir(url, tarayici=None):
         return {"durum": "hata", "denenen": s["denenen"],
                 "mesaj": f"Mağaza sayfası açılamadı ({'HTTP ' + str(s['kod']) if s.get('kod') else s.get('hata')})."}
     h = s["html"]
+    if not magaza_alani(son):
+        # Mağaza değil, aracı bir fırsat sitesine geldik: fiyat orada DOĞRULANMAZ, gerçek mağaza linki aranır
+        hedef = araci_sayfadan_magaza_linki(h) if _derinlik < 2 else None
+        if hedef:
+            return canli_fiyat_getir(hedef, tarayici, _derinlik + 1)
+        host_ = (urllib.parse.urlparse(son).hostname or "").lower()
+        return {"durum": "urun_degil", "son_url": son, "motor": motor,
+                "mesaj": f"Bağlantı mağazaya değil aracı bir siteye ({host_}) gidiyor; mağaza linki bulunamadı."}
     host = (urllib.parse.urlparse(son).hostname or "").lower()
     yol = urllib.parse.urlparse(son).path.lower()
     if re.search(r"/magaza/|/arama|/sr$|/s$|/kampanya|/butik/|/liste/|/store/", yol) or not URUN_SAYFASI_RE.search(yol):
@@ -5776,7 +5824,7 @@ function mAraKart(c){
   const enPahali = sat[sat.length - 1].price;
   return `<article class="mf-kart${acik ? " acik" : ""}">
     <div class="mf-ust">
-      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${sat.length > 1 && Math.round((enPahali / en.price - 1) * 100) >= 1 ? `<div class="mf-oran orta" title="En ucuz ile en pahalı market arasındaki fark">%${Math.round((enPahali / en.price - 1) * 100)}<small>fark</small></div>` : ""}</div>
+      <div class="mf-gorsel">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}${sat.length > 1 && enPahali - en.price >= 0.01 ? `<div class="mf-oran orta" title="En ucuz ile en pahalı market arasındaki fark">%${Math.round((enPahali / en.price - 1) * 100)}<small>fark</small></div>` : ""}</div>
       <div class="mf-bilgiler">
         <div class="mf-ad" title="${esc(c.title)}">${esc(c.title)}</div>
         <div class="mf-zs">${zEtiket(en.marketAdi)}${sat.length > 1 ? `<small>+${sat.length - 1} market</small>` : `<small>${esc(en.depotName || "")}</small>`}</div>
