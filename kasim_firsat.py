@@ -1490,7 +1490,8 @@ def magaza_sayfasi_getir(url, zaman_asimi=20, tarayici=None):
 #   Nesneyi bulmak için düzenli ifade, okumak için json.raw_decode kullanılır (iç içe parantezde şaşmaz).
 # ---------------------------------------------------------------------------
 _SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script\s*>", re.S | re.I)
-_ATAMA_RE = re.compile(r"(?:window\.|self\.|globalThis\.)?([A-Za-z_$][\w$.]*?)\s*=\s*(?=[{\[])")
+# window.__STATE__ = {...}  ya da  window["__envoy__SHARED_PROPS"] = {...} (Trendyol)
+_ATAMA_RE = re.compile(r"""(?:(?:window|self|globalThis)\[["']([^"'\]]{1,80})["']\]|(?:window\.|self\.|globalThis\.)?([A-Za-z_$][\w$.]*?))\s*=\s*(?=[{\[])""")
 _JSON_PARSE_RE = re.compile(r'JSON\.parse\(\s*"((?:[^"\\]|\\.){20,})"\s*\)', re.S)
 _JSON_COZ = json.JSONDecoder()
 SATIS_ANAHTAR = ("discountedPrice", "finalPrice", "finalPriceOnSale", "salePrice", "sellingPrice", "currentPrice",
@@ -1522,7 +1523,7 @@ def gomulu_jsonlar(h, en_fazla=40):
             continue
         # window.__PRODUCT_DETAIL_APP_INITIAL_STATE__ = {...};  /  window.__INITIAL_STATE__ = {...}
         for a in _ATAMA_RE.finditer(govde):
-            ad = a.group(1)
+            ad = a.group(1) or a.group(2)
             if not re.search(r"state|data|props|product|initial|__", ad, re.I):
                 continue
             try:
@@ -1592,16 +1593,44 @@ def _resim_coz(x):
     return None
 
 
+FIYAT_YOLU = ("price", "prices", "priceInfo", "pricing", "offers", "offer", "winnerVariant", "merchantListing", "listing",
+              "selectedVariant", "priceSpecification")
+LISTE_TURU = re.compile(r"ListPrice|Strikethrough|MSRP|SRP|RegularPrice", re.I)
+
+
+def _fiyat_yerleri(x, derinlik=3, en_fazla=20):
+    """Ürün nesnesi ve fiyat taşıyan alt nesneleri (ör. merchantListing → winnerVariant → price), yakından uzağa."""
+    yerler, kuyruk, gorulen = [x], [(x, 0)], {id(x)}
+    while kuyruk and len(yerler) < en_fazla:
+        y, d = kuyruk.pop(0)
+        if d >= derinlik:
+            continue
+        for k in FIYAT_YOLU:
+            v = y.get(k)
+            for z in (v[:5] if isinstance(v, list) else [v]):
+                if isinstance(z, dict) and id(z) not in gorulen:
+                    gorulen.add(id(z))
+                    yerler.append(z)
+                    kuyruk.append((z, d + 1))
+    return yerler
+
+
+def _liste_spec_mi(y):
+    """schema.org UnitPriceSpecification(priceType=ListPrice/StrikethroughPrice): üstü çizili fiyatı taşır."""
+    return bool(LISTE_TURU.search(str(y.get("priceType") or "")))
+
+
 def _fiyatlar_coz(x):
     """Bir nesnenin (ve fiyat/teklif alt nesnelerinin) satış ve liste fiyatı: (satış, liste)."""
-    yerler = [x] + [x[k] for k in ("price", "prices", "priceInfo", "pricing", "offers", "offer", "winnerVariant",
-                                    "merchantListing", "listing")
-                    if isinstance(x.get(k), dict)]
-    if isinstance(x.get("offers"), list):
-        yerler += [o for o in x["offers"][:5] if isinstance(o, dict)]
+    yerler = _fiyat_yerleri(x)
     satis = liste = None
-    for anahtar in SATIS_ANAHTAR:
+    # n11 uygulama verisi: displayPriceFloat = ödenen, priceFloat = üstü çizili fiyat
+    if isinstance(x.get("displayPriceFloat"), (int, float)) and isinstance(x.get("priceFloat"), (int, float)):
+        satis, liste = _sayi(x["displayPriceFloat"]), _sayi(x["priceFloat"])
+    for anahtar in () if satis else SATIS_ANAHTAR:
         for y in yerler:
+            if _liste_spec_mi(y):
+                continue
             if anahtar in y and anahtar not in ("value", "amount") or (anahtar in ("value", "amount") and y is not x):
                 f = _sayi(y.get(anahtar))
                 if f:
@@ -1609,7 +1638,7 @@ def _fiyatlar_coz(x):
                     break
         if satis:
             break
-    for anahtar in LISTE_ANAHTAR:
+    for anahtar in () if liste else LISTE_ANAHTAR:
         for y in yerler:
             f = _sayi(y.get(anahtar)) if anahtar in y else None
             if f:
@@ -1617,7 +1646,10 @@ def _fiyatlar_coz(x):
                 break
         if liste:
             break
-    if satis and liste and liste <= satis * 1.001:
+    if not liste:
+        liste = next((f for y in yerler if _liste_spec_mi(y) and (f := _sayi(y.get("price")))), None)
+    # Liste fiyatı satıştan yüksek ve makul olmalı (8 katından fazlası çoğu zaman başka bir alanın değeridir)
+    if satis and liste and not (satis * 1.001 < liste <= satis * 8):
         liste = None
     return satis, liste
 
@@ -1664,6 +1696,16 @@ def urun_adaylari(nesneler, sayfa_basligi=None, en_fazla_dugum=60000):
     return adaylar
 
 
+def amazon_liste_fiyati(h):
+    """Amazon ana fiyat kutusundaki üstü çizili fiyat (yoksa None). Sayfadaki öneri kartlarının fiyatları alınmaz."""
+    bas = max(h.find('id="corePriceDisplay_desktop_feature_div"'), h.find("apex-core-price-identifier"))
+    if bas < 0:
+        return None
+    son = min([i for i in (h.find('id="oneTimePaymentPrice_feature_div"', bas), h.find('id="buybox"', bas)) if i > 0] or [bas + 8000])
+    m = re.search(r'data-a-strike="true"[^>]*>\s*<span class="a-offscreen">([^<]*\d[^<]*)</span>', h[bas:min(son, bas + 8000)])
+    return _fiyat_metinden(m.group(1)) if m else None
+
+
 def urun_verisi_coz(h, host):
     """Ürün sayfasından {baslik, fiyat, liste_fiyati, stok, resim, gtin, yontem}. Bulunamayan alan None."""
     og = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', h, re.I) or \
@@ -1691,6 +1733,9 @@ def urun_verisi_coz(h, host):
         f, y = sayfadan_fiyat(h, host)
         if f and ("amazon." in host or not sonuc["fiyat"]):
             sonuc["fiyat"], sonuc["yontem"] = f, y
+    if "amazon." in host and sonuc["fiyat"]:
+        liste = amazon_liste_fiyati(h)
+        sonuc["liste_fiyati"] = liste if liste and sonuc["fiyat"] * 1.001 < liste <= sonuc["fiyat"] * 8 else None
     if not sonuc["baslik"] or not sonuc["resim"] or not sonuc["gtin"]:
         b, r, g = sayfadan_baslik(h)
         sonuc["baslik"], sonuc["resim"], sonuc["gtin"] = sonuc["baslik"] or b, sonuc["resim"] or r, sonuc["gtin"] or g
