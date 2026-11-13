@@ -4726,90 +4726,316 @@ details.metin div{white-space:pre-wrap;margin-top:6px;color:var(--soluk);overflo
   .mf-kart.acik .mf-ust{flex-direction:column}.mf-kart.acik .mf-gorsel{width:100%;max-width:220px;align-self:center}
   .mf-eylem .mf-btn{width:100%}.mf-satir{grid-template-columns:minmax(0,1fr) auto;}.mf-e{grid-column:2;grid-row:1/3}}
 
-/* ---- Düşero görünümü: herkese açık siteyle aynı renkler, logo ve yerleşim ---- */
+/* ---- Düşero: herkese açık siteyle birebir aynı görünüm (site/stil.css ile aynı ölçüler ve renkler) ---- */
 :root{--bg:#f6f6f3;--yuzey:#fff;--yuzey2:#f1f1ee;--metin:#14161a;--soluk:#5b6170;--cizgi:#e4e4e0;--cizgi2:#d4d4ce;
-  --vurgu:#c2380a;--vurgu-ust:#fff;--vurgu-yumusak:#ffe8dd;--mavi:#1e3a9e;--mavi-y:#e0e9ff;--kirmizi:#9f1239;--kirmizi-y:#ffe4e8;--gri-y:#eceef2}
+  --vurgu:#c2380a;--vurgu-koyu:#8f2905;--vurgu-ust:#fff;--vurgu-yumusak:#ffe8dd;--vurgu-yazi:#a12e06;
+  --mavi:#1e3a9e;--mavi-cizgi:#1e40af;--mavi-y:#e0e9ff;--gri-yazi:#3a4453;--gri-y:#eceef2;
+  --kirmizi:#9f1239;--kirmizi-cizgi:#be123c;--kirmizi-y:#ffe4e8;--gorsel-zemin:#f1f1ee;--golge:0 18px 40px -24px rgba(20,22,26,.35)}
 @media (prefers-color-scheme:dark){:root{--bg:#101114;--yuzey:#181a1f;--yuzey2:#22252b;--metin:#eceef2;--soluk:#a3a9b5;--cizgi:#2a2d34;--cizgi2:#3a3e47;
-  --vurgu:#ff7a45;--vurgu-ust:#14161a;--vurgu-yumusak:#3a2219;--mavi:#a9c1ff;--mavi-y:#1b2647;--kirmizi:#ffa8b8;--kirmizi-y:#3d1822;--gri-y:#2a2d34}}
-body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
-.kap{max-width:1240px}
-header{background:color-mix(in srgb,var(--yuzey) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
-  padding:max(10px,env(safe-area-inset-top)) 20px 0}
-.ust{gap:14px;min-height:50px}
-.marka{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--metin);flex:none}
-.marka svg{width:34px;height:34px;flex:none}
-.marka-ad{font-weight:800;font-size:25px;letter-spacing:-.035em;line-height:1}
-.marka-etiket{font-size:12px;font-weight:700;color:var(--vurgu);background:var(--vurgu-yumusak);border-radius:999px;padding:4px 10px;white-space:nowrap}
-.ust .bas{padding-left:6px}
-.yenile{border-radius:12px;min-height:42px;padding:0 15px;border-color:var(--cizgi2)}
-.yenile:hover{border-color:var(--metin)}
-.yenile.telefon{background:var(--vurgu);border-color:var(--vurgu);color:var(--vurgu-ust)}
-nav{gap:6px;padding:8px 0 12px;margin-top:0}
-nav button{border:1px solid var(--cizgi2);border-radius:999px;padding:8px 15px;background:var(--yuzey);color:var(--metin);font-weight:600;font-size:14px}
-nav button:hover{border-color:var(--metin)}
-nav button[aria-selected=true]{background:var(--metin);border-color:var(--metin);color:var(--yuzey)}
-nav button[aria-selected=true] .say{color:inherit;opacity:.7}
-.sayac{padding:6px 0 0}
-.sayac span{background:var(--vurgu-yumusak)}
-main{padding:20px 20px 90px}
-#icerik{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px;align-items:start}
+  --vurgu:#ff7a45;--vurgu-koyu:#ff9b70;--vurgu-ust:#14161a;--vurgu-yumusak:#3a2219;--vurgu-yazi:#ffb08f;
+  --mavi:#a9c1ff;--mavi-cizgi:#8fb0ff;--mavi-y:#1b2647;--gri-yazi:#c8ccd4;--gri-y:#2a2d34;
+  --kirmizi:#ffa8b8;--kirmizi-cizgi:#ff7f98;--kirmizi-y:#3d1822;--gorsel-zemin:#22252b;--golge:none}}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--metin);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+main{padding:0 0 8px}
+.s-kap{max-width:1240px;margin:0 auto;padding:0 20px}
+.s-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.s-ico{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.s-soluk{color:var(--soluk)}
+
+/* Düğmeler ve alanlar */
+.s-dugme{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:0;border-radius:12px;
+  background:var(--vurgu);color:#fff;font:600 15px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-decoration:none;cursor:pointer;white-space:nowrap}
+.s-dugme:hover{background:var(--vurgu-koyu);color:#fff}
+.s-dugme.s-ikincil{background:var(--yuzey);color:var(--metin);box-shadow:inset 0 0 0 1px var(--cizgi2)}
+.s-dugme.s-ikincil:hover{box-shadow:inset 0 0 0 1.5px var(--metin);color:var(--metin)}
+.s-dugme.s-ikincil[aria-pressed=true]{color:var(--vurgu);box-shadow:inset 0 0 0 1.5px var(--vurgu)}
+.s-dugme.s-buyuk{min-height:52px;padding:0 26px;font-size:16px}
+.s-dugme.s-kare{width:44px;padding:0}
+.s-dugme.s-tam{width:100%}
+.s-dugme.don svg{animation:don 1s linear infinite}
+@media (prefers-color-scheme:dark){.s-dugme:not(.s-ikincil){color:#14161a}}
+.s-alan,.s-arac select,.s-arac input[type=search]{min-height:46px;border:1px solid var(--cizgi2);border-radius:12px;
+  background:var(--yuzey);padding:0 14px;font:16px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--metin);min-width:0;width:auto}
+.s-alan.s-buyuk{min-height:52px}
+.s-dugme:focus-visible,.s-alan:focus-visible,.s-cip:focus-visible,#nav button:focus-visible,a:focus-visible,button:focus-visible,select:focus-visible{outline:3px solid #ff9b70;outline-offset:2px}
+.s-link{background:none;border:0;padding:0;color:var(--vurgu);font:inherit;cursor:pointer;text-align:left}
+.s-link:hover{color:var(--vurgu-koyu);text-decoration:underline}
+
+/* Üst menü */
+header.s-ust{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--yuzey) 90%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--cizgi);padding:env(safe-area-inset-top) 0 0}
+.s-ust-ic{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;flex-wrap:wrap}
+.s-marka{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--metin)}
+.s-marka:hover{color:var(--metin)}
+.s-marka-ad{font-weight:800;font-size:25px;letter-spacing:-.035em;text-transform:lowercase}
+nav.s-menu{display:flex;align-items:center;gap:6px 18px;flex-wrap:wrap;margin:0;overflow:visible}
+.s-menu .s-menu-link{color:var(--metin);background:none;border:0;font:500 16px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:10px 2px;cursor:pointer}
+.s-menu .s-menu-link:hover{color:var(--vurgu)}
+.s-menu .s-dugme{border:0}
+@media (max-width:560px){.s-menu .s-menu-link,.s-m-gizle{display:none}.s-ust-ic{flex-wrap:nowrap}.s-menu .s-dugme{min-height:44px;padding:0 12px;font-size:14px}#telefonBtn{width:44px;padding:0}}
+
+/* Kahraman */
+.s-kahraman{background:var(--yuzey);border-bottom:1px solid var(--cizgi)}
+.s-kahraman[hidden]{display:none}
+.s-kahraman-ic{display:flex;flex-wrap:wrap;gap:40px;align-items:center;padding-top:52px;padding-bottom:56px}
+.s-kahraman-metin{flex:1 1 480px;min-width:0;display:flex;flex-direction:column;gap:20px}
+.s-etiket-ust{align-self:flex-start;background:var(--vurgu-yumusak);color:var(--vurgu-yazi);font-weight:600;font-size:13.5px;padding:7px 12px;border-radius:999px}
+h1.s-h1{margin:0;font-size:clamp(38px,5.6vw,66px);line-height:1.02;letter-spacing:-.035em;font-weight:800}
+h1.s-h1 span{color:var(--vurgu)}
+.s-giris-p{margin:0;font-size:18px;line-height:1.55;color:var(--soluk);max-width:580px}
+.s-ara-kutu{display:flex;gap:10px;max-width:600px}
+.s-ara-kutu .s-alan{flex:1}
+.s-ozellikler{list-style:none;margin:0;padding:0;display:flex;gap:10px 22px;flex-wrap:wrap;color:var(--soluk);font-size:14.5px}
+.s-ozellikler li{display:flex;align-items:center;gap:8px}
+.s-ozellikler .s-ico{color:var(--vurgu)}
+.s-durum{margin:0;font-size:14px;color:var(--soluk)}
+.s-durum .hata{color:var(--vurgu-yazi);font-weight:600;text-decoration:underline;background:none;border:0;padding:0;font-size:inherit;cursor:pointer}
+.s-sayac{display:flex;gap:8px;flex-wrap:wrap}
+.s-sayac span{font-size:13px;background:var(--vurgu-yumusak);border-radius:999px;padding:5px 11px}
+.s-sayac b{color:var(--vurgu)}
+
+/* Günün düşüşü */
+.s-one{flex:1 1 400px;min-width:0;max-width:560px;background:var(--yuzey);border:1px solid var(--cizgi);border-radius:22px;padding:22px;box-shadow:var(--golge);
+  display:flex;flex-direction:column;gap:14px}
+.s-one[hidden]{display:none}
+.s-one-ust{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.s-ust-yazi{font-size:12.5px;font-weight:700;color:var(--soluk);text-transform:uppercase;letter-spacing:.08em}
+.s-one-baslik{margin:2px 0 0;font-size:19px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.s-fiyat-satir{display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap}
+.s-fiyat{font-weight:800;font-size:25px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.s-fiyat.s-dev{font-size:40px}
+.s-fiyat small{font-size:13px;font-weight:600;color:var(--soluk)}
+.s-eski{color:var(--soluk);font-size:15px}
+.s-eski:empty{display:none}
+.s-kutucuklar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.s-kutucuk{background:var(--bg);border-radius:12px;padding:12px;min-width:0}
+.s-kutucuk span{display:block;font-size:12.5px;color:var(--soluk)}
+.s-kutucuk b{display:block;font-size:19px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-kutucuk.s-mavi{background:var(--mavi-y)}
+.s-kutucuk.s-mavi span,.s-kutucuk.s-mavi b{color:var(--mavi)}
+.s-grafik{display:block;width:100%;height:120px;overflow:visible}
+.s-grafik .alan-dolgu{fill:var(--vurgu-yumusak)}
+.s-grafik .cizgi{fill:none;stroke:var(--vurgu);stroke-width:2.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.s-grafik .normal-cizgi{stroke:var(--soluk);stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.s-grafik-kutu{position:relative}
+.s-grafik-buyuk{height:240px}
+.s-grafik-etiket{position:absolute;right:6px;font-size:12px;color:var(--soluk);background:var(--yuzey);padding:1px 6px;border-radius:6px}
+.s-grafik-etiket.ust-e{top:0}.s-grafik-etiket.alt-e{bottom:0}
+.s-grafik-tarih{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--soluk);margin-top:4px}
+.s-grafik-yok{display:grid;place-items:center;min-height:100px;border:1px dashed var(--cizgi);border-radius:12px;color:var(--soluk);font-size:13px;padding:16px;text-align:center}
+
+/* Bölüm sekmeleri: sitedeki kategori çipleri gibi */
+.s-sekme-kap{padding-top:28px}
+nav#nav.s-sekmeler{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;margin:0;scrollbar-width:none}
+nav#nav.s-sekmeler::-webkit-scrollbar{display:none}
+nav#nav.s-sekmeler button{flex-shrink:0;min-height:40px;padding:0 15px;border-radius:999px;border:1px solid var(--cizgi2);background:var(--yuzey);color:var(--metin);
+  font:500 14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+nav#nav.s-sekmeler button:hover{border-color:var(--metin)}
+nav#nav.s-sekmeler button[aria-selected=true]{background:var(--metin);border-color:var(--metin);color:var(--yuzey)}
+nav#nav.s-sekmeler .say{opacity:.65;font-size:12.5px;margin-left:5px;color:inherit;font-weight:500}
+
+/* Bölümler */
+.s-bolum{padding-top:28px;padding-bottom:8px}
+.s-bolum-bas{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+h2.s-bolum-baslik{margin:0 0 6px;font-size:clamp(28px,4vw,36px);letter-spacing:-.03em;font-weight:800;line-height:1.15}
+.s-bolum-bas p{margin:0}
+.s-arac{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.s-arac #ara{flex:1 1 140px;min-width:130px;width:auto}
+.s-arac select{max-width:175px}
+.s-arac #min{max-width:150px}.s-arac #sirala{max-width:200px}
+@media (min-width:721px){.s-arac .s-anahtar{padding-left:10px;padding-right:12px;white-space:nowrap}}
+@media (max-width:720px){.s-arac{width:100%}.s-arac #ara{flex:1 1 100%;width:auto}.s-arac select{flex:1 1 40%}}
+.s-anahtar{display:flex;align-items:center;gap:8px;min-height:46px;padding:0 14px;background:var(--yuzey);border:1px solid var(--cizgi2);border-radius:12px;
+  font-size:14.5px;font-weight:500;cursor:pointer;white-space:nowrap;margin:0}
+.s-anahtar input{width:18px;height:18px;accent-color:var(--mavi-cizgi);margin:0}
+.s-cipler{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none}
+.s-cipler::-webkit-scrollbar{display:none}
+.s-cip,.s-cipler .cip{flex-shrink:0;min-height:40px;padding:0 15px;border-radius:999px;border:1px solid var(--cizgi2);background:var(--yuzey);color:var(--metin);
+  font:500 14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer}
+.s-cip:hover,.s-cipler .cip:hover{border-color:var(--metin)}
+.s-cip[aria-pressed=true],.s-cipler .cip[aria-pressed=true]{background:var(--metin);border-color:var(--metin);color:var(--yuzey)}
+.s-cip span{opacity:.65;font-size:12.5px;margin-left:5px}
+.s-not{font-size:13.5px;color:var(--soluk);margin:0;line-height:1.5}
+
+/* İçerik ızgarası: kartlar sitedeki gibi, diğer her şey tam genişlik */
+#icerik{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;align-items:start;padding-top:20px}
 #icerik>*{grid-column:1/-1;min-width:0}
-#icerik>.kart{grid-column:auto;margin:0}
-@media (max-width:440px){#icerik{grid-template-columns:minmax(0,1fr)}}
-.kart{border-radius:18px;padding:14px;transition:border-color .15s}
-.kart:hover{border-color:#b9b9b2}
-.resim{border-radius:12px;background:#fff;border:1px solid var(--cizgi);object-fit:contain}
-.oran{border-radius:10px}
-.fiyat,.fsatir.indirimli .fdeger,.kupon-bas{font-weight:800;letter-spacing:-.02em}
-.filtre{background:var(--yuzey);border:1px solid var(--cizgi);border-radius:18px;padding:14px;margin:0}
-input[type=search],input[type=text],input[type=number],select{border-radius:12px;min-height:44px;border-color:var(--cizgi2)}
-input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #ff9b70;outline-offset:2px}
-.cip{min-height:38px;padding:0 14px;font-weight:500;border-color:var(--cizgi2)}
-.cip:hover{border-color:var(--metin)}
-.not{border-radius:12px;margin:0;background:var(--vurgu-yumusak);color:var(--metin)}
+#icerik>.s-kart{grid-column:auto;margin:0}
+@media (max-width:540px){#icerik{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+
+/* Kart */
+.s-kart{background:var(--yuzey);border:1px solid var(--cizgi);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0;align-self:stretch}
+.s-kart:hover{border-color:var(--cizgi2)}
+.s-kart.s-bitti{opacity:.6}
+.s-gorsel{position:relative;display:grid;place-items:center;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:#fff;color:var(--soluk);
+  text-decoration:none;border:1px solid var(--cizgi);cursor:pointer}
+.s-gorsel img{width:100%;height:100%;object-fit:contain;display:block}
+.s-gorsel.yok{background:var(--gorsel-zemin)}
+.s-gorsel.yok::after{content:"";width:44px;height:44px;opacity:.55;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8l-9-5-9 5 9 5 9-5z'/%3E%3Cpath d='M3 8v8l9 5 9-5V8'/%3E%3Cpath d='M12 13v8'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8l-9-5-9 5 9 5 9-5z'/%3E%3Cpath d='M3 8v8l9 5 9-5V8'/%3E%3Cpath d='M12 13v8'/%3E%3C/svg%3E") center/contain no-repeat}
+.s-oran-rozet{position:absolute;top:8px;left:8px;background:var(--vurgu);color:#fff;font-weight:700;font-size:13px;padding:3px 8px;border-radius:8px}
+.s-ust-satir{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--soluk)}
+.s-ust-satir .s-magaza{font-weight:700;color:var(--metin);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-ust-satir .s-sag{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.s-yeni{background:var(--vurgu);color:#fff;border-radius:6px;padding:1px 6px;font-size:12px;font-weight:700}
+h3.s-baslik{margin:0;font-size:15px;line-height:1.35;font-weight:600;min-height:2.7em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+h3.s-baslik a{color:inherit;text-decoration:none}
+h3.s-baslik a:hover{text-decoration:underline}
+.s-karar-satir{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}
+.s-mini{display:block;width:84px;height:28px;flex-shrink:0}
+.s-mini svg{display:block;width:100%;height:100%;overflow:visible}
+.s-mini polyline{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke;stroke:var(--cizgi2)}
+.s-mini.k-dip polyline{stroke:var(--mavi-cizgi)}
+.s-mini.k-iyi polyline{stroke:var(--soluk)}
+.s-mini.k-sisirilmis polyline{stroke:var(--kirmizi-cizgi)}
+.s-ozet-satir{margin:0;font-size:13px;line-height:1.45;color:var(--soluk)}
+.s-ozet-satir:empty{display:none}
+.s-ozet-satir b{color:var(--metin)}
+.s-notlar{list-style:none;margin:0;padding:0;font-size:13px;color:var(--soluk);display:flex;flex-direction:column;gap:3px}
+.s-notlar:empty{display:none}
+.s-notlar li{padding-left:16px;position:relative}
+.s-notlar li::before{content:"•";position:absolute;left:4px}
+.s-notlar li.uyari{color:var(--vurgu-yazi)}
+.s-notlar li.iyi{color:var(--mavi)}
+.s-notlar .kod{margin:2px 4px 0 0}
+.s-kart-alt{display:flex;gap:8px;margin-top:auto;padding-top:2px}
+.s-kart-alt .s-git{flex:1}
+@media (max-width:540px){.s-kart{padding:10px;border-radius:14px;gap:8px}.s-fiyat{font-size:20px}.s-mini{display:none}.s-ozet-satir{font-size:12px}
+  .s-kart-alt .s-git{padding:0 10px;font-size:14px}}
+
+/* Kupon kartı */
+.s-kupon-bas{font-size:22px;font-weight:800;letter-spacing:-.02em;overflow-wrap:anywhere}
+.s-kodlar{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Rozetler */
+.s-rozet{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.s-rozet.k-dip{background:var(--mavi-y);color:var(--mavi)}
+.s-rozet.k-iyi{background:var(--gri-y);color:var(--gri-yazi)}
+.s-rozet.k-sisirilmis{background:var(--kirmizi-y);color:var(--kirmizi)}
+.s-rozet.k-yok{background:transparent;color:var(--soluk);box-shadow:inset 0 0 0 1px var(--cizgi2);font-weight:600}
+.s-rozet.k-kac{background:var(--vurgu);color:#fff}
+@media (max-width:540px){.s-rozet{font-size:11.5px;padding:4px 8px}}
+
+/* Eski parçalar (arama, arşiv, boş durum) sitenin diline */
+.bos-durum{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;color:var(--soluk);background:var(--yuzey);border:1px dashed #c9c9c3;border-radius:18px;padding:36px 20px}
+.daha{min-height:48px;border-radius:14px;border:1px solid var(--cizgi2);background:var(--yuzey);font-weight:600}
 .arama-ozet,.ipucu{margin:0}
-.eylem a,.eylem button.ikincil,.gecmis-btn{border-radius:10px}
-.eylem a.ana,.d-dugmeler a.ana{background:var(--vurgu);border-color:var(--vurgu);color:var(--vurgu-ust)}
-.kaydet,.daha,.d-dugmeler a,.d-dugmeler button{border-radius:12px}
+.eski-liste{margin-top:8px}
+.not{border-radius:12px;margin:0;background:var(--vurgu-yumusak);color:var(--metin)}
+.kod{border-radius:8px}
+
+/* Nasıl çalışır */
+.s-nasil{padding-top:52px}
+.s-nasil[hidden]{display:none}
+.s-adimlar{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:18px}
+.s-adim{background:var(--yuzey);border:1px solid var(--cizgi);border-radius:18px;padding:24px}
+.s-adim-no{font-size:38px;font-weight:800;color:var(--vurgu);line-height:1}
+.s-adim h3{margin:10px 0 6px;font-size:19px}
+.s-adim p{margin:0;color:var(--soluk);line-height:1.55}
+.s-aciklama{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.s-aciklama .s-rozet{white-space:normal}
+
+/* Alt bilgi */
+.s-alt{margin-top:56px;background:var(--yuzey);border-top:1px solid var(--cizgi);color:var(--soluk);font-size:13.5px;padding-bottom:calc(env(safe-area-inset-bottom) + 70px)}
+.s-alt-ic{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;padding-top:32px;padding-bottom:20px}
+.s-alt-ic>div{flex:1 1 420px;max-width:680px}
+.s-alt-ic p{line-height:1.6;margin:8px 0 0}
+.s-kucuk-marka{font-size:21px;color:var(--metin)}
+.s-alt-menu{display:flex;flex-direction:column;gap:8px;font-size:14.5px}
+.s-telif{border-top:1px solid var(--cizgi);padding-top:14px;padding-bottom:18px;text-align:center;font-size:13px;margin:0 auto}
+
+/* Ürün ayrıntısı: sitedeki gibi ortada açılan pencere */
+#detay{background:rgba(16,17,20,.55);padding:24px 12px}
+.s-detay-kutu{max-width:860px;margin:0 auto;background:var(--yuzey);border-radius:22px;box-shadow:0 30px 80px -20px rgba(0,0,0,.45);overflow:hidden}
+#detay .d-ust{position:sticky;top:0;background:color-mix(in srgb,var(--yuzey) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#detay .d-ust button{border-radius:12px;min-height:44px;border-color:var(--cizgi2)}
+#detay .d-ic{max-width:none;padding:22px 26px 30px}
+#detay .d-bas img{border-radius:12px;border:1px solid var(--cizgi);width:120px;height:120px}
+#detay .d-bas h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+#detay .d-dugmeler a,#detay .d-dugmeler button{min-height:44px;border-radius:12px;display:inline-flex;align-items:center;border-color:var(--cizgi2);background:var(--yuzey)}
+#detay .d-dugmeler a.ana{background:var(--vurgu);border-color:var(--vurgu);color:#fff}
+#detay .d-bolum h2{font-size:19px;font-weight:800;letter-spacing:-.01em}
+#detay .d-istat div{border-radius:12px;background:var(--bg);border:0}
+.bgrafik{max-width:100%;border-radius:18px}
+.fsatir.indirimli .fdeger{font-weight:800;letter-spacing:-.02em}
+.fsatir .fdeger{white-space:nowrap}
+@media (max-width:560px){#detay{padding:0}.s-detay-kutu{border-radius:0;min-height:100%}#detay .d-ic{padding:16px}}
+
+/* Diğer bölümler (Takibim, Market, Ayarlar, Takvim) aynı kenar ve renklerde */
 .ayar,.takvim{max-width:860px}
 .telefon-panel{border-radius:18px}
-.d-ic{max-width:900px}
-.bgrafik{max-width:560px}
-.fsatir .fdeger{white-space:nowrap}
-.d-ust{background:color-mix(in srgb,var(--yuzey) 92%,transparent)}
-.bgrafik{border-radius:18px}
-.bos-durum{background:var(--yuzey);border:1px dashed #c9c9c3;border-radius:18px}
 .toast{border-radius:12px}
-@media (max-width:640px){
-  header{padding-left:14px;padding-right:14px}
-  main{padding:14px 12px 90px}
-  .ust{flex-wrap:wrap;gap:8px 10px}
-  .ust .bas{order:5;flex:1 1 100%;padding:0}
-  .marka-etiket{display:none}
-  .marka{margin-right:auto}
-  .yenile span{display:none}
-  .yenile{padding:0 12px}
-}
 </style>
 </head>
 <body>
-<header><div class="kap">
-  <div class="ust">
-    <a class="marka" href="./" aria-label="Düşero · Kasım Fırsatları ana sayfa"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#C2380A"/><path d="M112 168 222 278l64-64 116 116M402 222v108H294" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="marka-ad">düşero</span><span class="marka-etiket">Kasım Fırsatları</span></a>
-    <div class="bas"><div class="durum" id="durum">Yükleniyor…</div></div>
-    <button class="yenile telefon" id="telefonBtn" type="button" hidden data-git="ayar" aria-label="Telefonda aç">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
-      <span>Telefonda aç</span>
-    </button>
-    <button class="yenile" id="yenileBtn" type="button" aria-label="Şimdi yenile">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-      <span>Yenile</span>
-    </button>
-  </div>
-  <div class="sayac" id="sayac"></div>
-  <nav id="nav" role="tablist"></nav>
+<header class="s-ust"><div class="s-kap s-ust-ic">
+  <a class="s-marka" href="./" aria-label="Düşero ana sayfa"><svg width="34" height="34" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#C2380A"/><path d="M112 168 222 278l64-64 116 116M402 222v108H294" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="s-marka-ad">düşero</span></a>
+  <nav class="s-menu" aria-label="Ana menü">
+    <button type="button" class="s-menu-link" data-git="tum">Fırsatlar</button>
+    <button type="button" class="s-menu-link" data-git="takip">Takibim</button>
+    <button type="button" class="s-menu-link" data-git="ayar">Ayarlar</button>
+    <button class="s-dugme s-ikincil" id="telefonBtn" type="button" hidden data-git="ayar" aria-label="Telefonda aç"><svg width="18" height="18" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><span class="s-m-gizle">Telefonda aç</span></button>
+    <button class="s-dugme" id="yenileBtn" type="button" aria-label="Şimdi yenile"><svg width="18" height="18" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span>Yenile</span></button>
+  </nav>
 </div></header>
-<main><div class="kap" id="icerik"></div></main>
+
+<section class="s-kahraman" id="kahraman">
+  <div class="s-kap s-kahraman-ic">
+    <div class="s-kahraman-metin">
+      <span class="s-etiket-ust">Etikete değil, fiyat geçmişine bak</span>
+      <h1 class="s-h1">Fiyat gerçekten düştü mü?<br><span>Düşero söyler.</span></h1>
+      <p class="s-giris-p">Fırsat kanallarındaki indirimleri sürekli izliyoruz. Her indirimi ürünün kayıtlı fiyatlarıyla karşılaştırıyor, şişirilmiş etiketleri ayıklıyor, fiyatı mağazada kontrol ediyoruz.</p>
+      <form class="s-ara-kutu" role="search" id="ustAraForm">
+        <label class="s-sr" for="ustAra">Ürün ara</label>
+        <input id="ustAra" class="s-alan s-buyuk" type="search" placeholder="Ürün, marka ya da model ara…" autocomplete="off">
+        <button class="s-dugme s-buyuk" type="submit">Ara</button>
+      </form>
+      <ul class="s-ozellikler">
+        <li><svg width="20" height="20" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Fiyat geçmişi</li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="m9 12 2 2 4-4"/></svg>Gerçek indirim kontrolü</li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Mağazada teyitli fiyat</li>
+      </ul>
+      <p class="s-durum" id="durum" role="status">Yükleniyor…</p>
+      <div class="s-sayac" id="sayac"></div>
+    </div>
+    <aside id="one" class="s-one" hidden aria-label="Günün düşüşü"></aside>
+  </div>
+</section>
+
+<div class="s-kap s-sekme-kap"><nav id="nav" class="s-sekmeler" role="tablist" aria-label="Bölümler"></nav></div>
+<main><div class="s-kap" id="icerik"></div></main>
+
+<section id="nasil" class="s-kap s-bolum s-nasil">
+  <h2 class="s-bolum-baslik">Nasıl çalışır?</h2>
+  <div class="s-adimlar">
+    <div class="s-adim"><span class="s-adim-no">1</span><h3>Takip ederiz</h3><p>Telegram fırsat kanallarını ve Akakçe listelerini birkaç dakikada bir okur, her paylaşımı ve fiyatını kaydederiz.</p></div>
+    <div class="s-adim"><span class="s-adim-no">2</span><h3>Karşılaştırırız</h3><p>Yeni fiyatı ürünün kayıtlı fiyatlarıyla kıyaslar, mağaza sayfasında anlık fiyatı ve stoğu kontrol ederiz.</p></div>
+    <div class="s-adim"><span class="s-adim-no">3</span><h3>Haber veririz</h3><p>Gerçek düşüşler öne çıkar; hedef fiyat kurduğun ürün o fiyata inince bildirim gelir. Biten fırsatlar listeden düşer.</p></div>
+  </div>
+  <div class="s-aciklama">
+    <span class="s-rozet k-dip">Gerçek indirim — kayıtlardaki en düşük fiyat</span>
+    <span class="s-rozet k-iyi">İyi fiyat — normal fiyatın altında</span>
+    <span class="s-rozet k-sisirilmis">Şişirilmiş — etiket yüksek, fiyat her zamanki gibi</span>
+    <span class="s-rozet k-yok">Geçmiş az — henüz yeterli kayıt yok</span>
+  </div>
+</section>
+
+<footer class="s-alt">
+  <div class="s-kap s-alt-ic">
+    <div>
+      <span class="s-marka-ad s-kucuk-marka">düşero</span>
+      <p>Düşero bağımsız bir fiyat takip aracıdır; satış yapmaz. Fiyatlar fırsat kanallarının paylaştığı ve mağaza sayfasında okunan fiyatlardır; indirim değerlendirmeleri kaydedilen fiyatlara göre otomatik yapılır. Fiyat ve stoklar mağazalarca anlık değişebilir; satın almadan önce sepetteki son tutarı kontrol edin.</p>
+    </div>
+    <nav aria-label="Alt menü" class="s-alt-menu">
+      <button type="button" class="s-link" data-git="tum">Fırsatlar</button>
+      <button type="button" class="s-link" data-git="takvim">Kampanya takvimi</button>
+      <button type="button" class="s-link" data-git="ayar">Ayarlar</button>
+    </nav>
+  </div>
+  <p class="s-kap s-telif">© 2026 Düşero</p>
+</footer>
 <div class="toast" id="toast"></div>
 <script>
 "use strict";
@@ -4990,6 +5216,7 @@ function filtreUygula(d){
     if (f.min === -1) d = d.filter(x => x.indirim != null);
     else if (f.min > 0) d = d.filter(x => (x.indirim || 0) >= f.min);
     if (!f.ikinciEl) d = d.filter(x => !x.rozetler.includes("ikinci_el"));
+    if (f.gercek && S.sekme !== "kupon") d = d.filter(x => x.tur === "urun" && ["dip", "iyi"].includes(kararHesap(x).kod));
   }
   if (q && arama) { const parca = aramaParcalari(q); d = d.filter(x => aramaEslesir(x, parca)); d.forEach(x => x._puan = aramaPuani(x, q, parca)); }
   const sure = arama ? 0 : ((f.sure || {})[S.sekme] || 0);
@@ -5116,93 +5343,111 @@ function ozetBlok(x){
   return `<div class="ozet">${grafik(x)}${satirlar.join("")}<div class="o-alt"><span class="ipucu">Kaynak: kanalların ${tarihKisa(o.ilk_ts)} tarihinden beri paylaştığı net fiyatlar (sepet ve kod indirimi dahil olabilir)</span>${ak}</div></div>`;
 }
 
+// ---- Düşero kartları (herkese açık siteyle aynı düzen) ----
+function kararHesap(x){
+  const o = x.fiyat_ozet, sup = x.eski_fiyat_supheli, r = x.rozetler || [];
+  const gercek = o ? Math.round(o.dusus_ort) : (sup ? Math.round(sup.gercek_yuzde) : null);
+  if (sup) return {kod: "sisirilmis", ad: "Şişirilmiş indirim", gercek, etiket: `Üstü çizili ${tl(sup.eski)} kayıtlarda hiç görülmedi`};
+  if (o && o.en_dusuge_gore <= 0.5 && o.dusus_ort >= 3) return {kod: "dip", ad: "Gerçek indirim", gercek, etiket: "Kayıtlardaki en düşük fiyat"};
+  if (x.dusus_etiketi || r.includes("dip") || r.includes("kayit_dusuk")) return {kod: "dip", ad: "Gerçek indirim", gercek, etiket: x.dusus_etiketi || "Dip fiyat"};
+  if (o && o.dusus_ort >= 5) return {kod: "iyi", ad: "İyi fiyat", gercek, etiket: `Normal fiyatın %${Math.round(o.dusus_ort)} altında`};
+  if (o && x.indirim) return {kod: "sisirilmis", ad: "Şişirilmiş indirim", gercek, etiket: `Çoğunlukla ${tl(o.ortalama)} civarında paylaşıldı`};
+  return {kod: "yok", ad: "Geçmiş az", gercek, etiket: null};
+}
+function miniGrafik(x, buyuk){
+  const n = (x.fiyat_gecmisi || []).map(([t, f]) => [t, f]).concat([[x.ts, x.indirimli_fiyat ?? x.fiyat]]).filter(z => z[1] != null);
+  if (n.length < 2) return "";
+  const G = buyuk ? 400 : 84, Y = buyuk ? 120 : 28, P = buyuk ? 10 : 3;
+  const normal = buyuk && x.fiyat_ozet ? x.fiyat_ozet.ortalama : null;
+  const fs = n.map(z => z[1]).concat(normal ? [normal] : []);
+  const mn = Math.min(...fs), mx = Math.max(...fs), ar = (mx - mn) || 1, t0 = n[0][0], ta = (n[n.length - 1][0] - t0) || 1;
+  const xy = (t, f) => [((t - t0) / ta * G).toFixed(1), (mx === mn ? Y / 2 : P + (1 - (f - mn) / ar) * (Y - 2 * P)).toFixed(1)];
+  const c = n.map(([t, f]) => xy(t, f).join(",")).join(" ");
+  const alan = buyuk ? `<polygon class="alan-dolgu" points="0,${Y} ${c} ${G},${Y}"/>` : "";
+  const ny = normal ? (y => `<line class="normal-cizgi" x1="0" x2="${G}" y1="${y}" y2="${y}"/>`)(xy(t0, normal)[1]) : "";
+  return `<svg ${buyuk ? 'class="s-grafik" ' : ""}viewBox="0 0 ${G} ${Y}" preserveAspectRatio="none" aria-hidden="true">${alan}${ny}<polyline ${buyuk ? 'class="cizgi" ' : ""}points="${c}"/></svg>`;
+}
+const saatYaz = ts => new Date(ts * 1000).toLocaleTimeString("tr-TR", {hour: "2-digit", minute: "2-digit"});
+const IKON_GRAFIK = `<svg width="20" height="20" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/></svg>`;
+const IKON_PAYLAS = `<svg width="20" height="20" viewBox="0 0 24 24" class="s-ico" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/></svg>`;
+
 function kart(x){
-  const res = link(x.resim);
-  const hedef = link(x.urun_link);
-  const oranSinif = (x.indirim || 0) >= 30 ? "oran" : "oran orta";
-  const cs = canliSonuc(x), canliOk = cs && cs.durum === "ok";
-  const oran = x.indirim != null && !bittiMi(x) ? `<div class="${oranSinif}" title="${esc(x.indirim_kaynak)}">%${x.indirim}<small>${x.varan ? "’e varan" : "indirim"}</small></div>` : "";
-  let fiyatNot = x.indirimli_not ? x.indirimli_not + "." : "";
-  if (x.sepet_fiyati) fiyatNot += ` Ürün sayfasında daha yüksek görünür${(x.kodlar || []).length ? "; kodu sepette uygulayın" : ""}.`;
+  const id = esc(x.id), res = link(x.resim), hedef = link(x.urun_link) || link(x.link);
+  const k = kararHesap(x), cs = canliSonuc(x), bitti = bittiMi(x);
+  const fiyat = x.indirimli_fiyat ?? x.fiyat;
+  const birim = (x.sayfa_tahmini || (x.indirimli_not && /adet fiyatı/.test(x.indirimli_not))) ? "<small> / adet</small>" : "";
+  const eski = x.satis_fiyati != null && fiyat != null && x.satis_fiyati > fiyat * 1.01 ? tl(x.satis_fiyati) : "";
   const yas = Date.now() / 1000 - x.ts;
-  const kaynakNot = [];
-  if (x.indirim_kaynak) kaynakNot.push("İndirim: " + x.indirim_kaynak);
-  const digerler = [...new Set((x.diger || []).map(z => kanalAd(z.kanal)).filter(a => a !== kanalAd(x.kanal)))];
-  if (digerler.length) kaynakNot.push("Ayrıca: " + digerler.join(", "));
-  const rozet = [];
-  (x.takip || []).forEach(t => rozet.push(`<span class="rozet r-takip">Takip: ${esc(t)}</span>`));
-  if (x.kacirilmaz && !bittiMi(x)) rozet.push(`<span class="rozet r-kac">🔥 Kaçırılmaz${x.kacirilmaz.dogrulandi ? "" : " · doğrulanamadı"}: ${esc(x.kacirilmaz.neden.join(", "))}</span>`);
-  if (x.dusus_etiketi) rozet.push(`<span class="rozet r-dusus">📉 ${esc(x.dusus_etiketi)}</span>`);
-  if (x.akakce_fark) rozet.push(`<span class="rozet r-dusus" title="Satıcılar arası fark; fiyat düşüşü değildir">⚖️ Akakçe: diğer satıcılardan %${esc(x.akakce_fark)} ucuz</span>`);
-  if ((x.magazalar || []).length >= 2) rozet.push(`<span class="rozet r-mavi">${x.magazalar.length} mağazada · en ucuz ${esc(x.magazalar[0].magaza_ad)}</span>`);
-  if (x.daha_once_ucuz) rozet.push(`<span class="rozet r-kirmizi">Daha önce bu fiyata ya da daha ucuza görüldü</span>`);
-  if (x.kontrol_et) rozet.push(`<span class="rozet r-kirmizi" title="${esc(x.kontrol_et)}">🧐 Kontrol et: fiyat şüpheli derecede düşük</span>`);
-  else if (x.otuz_gun_ustunde) rozet.push(`<span class="rozet r-sari">Son 30 günde ${tl(x.otuz_gun_ustunde)} görüldü, bu daha pahalı</span>`);
-  if (x.eski_fiyat_supheli) rozet.push(`<span class="rozet r-sari" title="Üstü çizili ${tl(x.eski_fiyat_supheli.eski)} son 60 günde hiç görülmedi; en yüksek görülen ${tl(x.eski_fiyat_supheli.gorulen)}">⚠️ Eski fiyat şişirilmiş görünüyor · gerçek indirim ~%${Math.round(x.eski_fiyat_supheli.gercek_yuzde)}</span>`);
-  if (x.kanal === TAKIBIM) rozet.push(`<span class="rozet r-mavi">📌 Kendi eklediğim ürün</span>`);
-  const dg = x.dogrulama;
-  if (dg && dg.durum === "onayli" && !bittiMi(x)) rozet.push(`<span class="rozet r-yesil" title="${esc(dg.neden || "")}">✔ Mağazada doğrulandı · ${new Date(dg.ts * 1000).toLocaleTimeString("tr-TR", {hour:"2-digit", minute:"2-digit"})}</span>`);
-  else if (dg && dg.durum === "red") rozet.push(`<span class="rozet r-kirmizi" title="${esc(dg.neden || "")}">✖ ${esc((dg.neden || "Fırsat bitmiş").slice(0, 70))}</span>`);
+  const notlar = [];
+  if (bitti) notlar.push(["uyari", cs && cs.durum === "stok_yok" ? "Ürün şu anda stokta yok" : "Fırsat bitmiş görünüyor"]);
+  else if (cs && cs.durum === "ok") notlar.push([cs.renk === "yesil" ? "iyi" : cs.renk === "kirmizi" ? "uyari" : "", `Mağazada ${cs.ts ? saatYaz(cs.ts) : "şu an"}: ${tl(cs.fiyat)}${cs.metin ? " · " + cs.metin : ""}`]);
+  else if (dogrulanamadi(x)) notlar.push(["uyari", `Fiyat mağazada doğrulanamadı · ${sureMetni(yas)} önce paylaşıldı`]);
+  else if (x.dogrulama && x.dogrulama.durum === "onayli") notlar.push(["iyi", `Mağazada doğrulandı · ${saatYaz(x.dogrulama.ts)}`]);
+  if (x.kosul) notlar.push(["", "İndirimli fiyat: " + x.kosul]);
+  else if (x.indirimli_not) notlar.push(["", x.indirimli_not]);
+  else if (x.sepet_fiyati) notlar.push(["", "Fiyat sepette oluşur; ürün sayfasında daha yüksek görünür"]);
   const akd = x.akakce_dogrulama;
-  if (akd && !bittiMi(x)) rozet.push(akd.fark <= 1
-    ? `<span class="rozet r-dusus" title="Akakçe: ${esc(akd.ad || "")} · eşleşme: ${esc(akd.eslesme || "")}">⚖️ Akakçe’deki en ucuz fiyat seviyesinde</span>`
-    : `<span class="rozet r-sari" title="Akakçe: ${esc(akd.ad || "")} · eşleşme: ${esc(akd.eslesme || "")}">⚖️ Akakçe’de ${tl(akd.en_ucuz)} satan var (%${Math.round(akd.fark)} daha ucuz)</span>`);
-  x.rozetler.filter(r => ROZET[r] && r !== "kupon" && !(r === "sepette" && fiyatNot)).forEach(r => rozet.push(`<span class="rozet ${ROZET[r][1]}">${ROZET[r][0]}</span>`));
-  if (x.xaly && !String(x.indirim_kaynak || "").startsWith(x.xaly)) rozet.push(`<span class="rozet r-mavi">${esc(x.xaly)}</span>`);
-  if (yas > 3 * 24 * SAAT) rozet.push(`<span class="rozet r-kirmizi">⚠️ ${tarihKisa(x.ts)} tarihli fiyat · bugün geçerli olmayabilir</span>`);
-  else if (yas > 12 * SAAT) rozet.push(`<span class="rozet r-sari">${Math.round(yas / SAAT)} saat önce paylaşıldı, fiyat değişmiş olabilir</span>`);
-  const sg = sonGunYazi(x); if (sg) rozet.push(`<span class="rozet ${sg[1]}">${sg[0]}</span>`);
-  const kodlar = (x.kodlar || []).map(k => `<button type="button" class="kod" data-kod="${esc(k)}" title="Kopyala">${esc(k)} ⧉</button>`);
-  const gor = x.goruntulenme ? ` · ${kf.format(x.goruntulenme)} görüntülenme` : "";
-  const kayitli = !!kayitlilar()[x.id];
-  return `<article class="kart${bittiMi(x) ? " k-bitti" : ""}" ${x.tur === "urun" && link(x.urun_link) && !canliSonuc(x) ? `data-oto="${esc(x.id)}"` : ""}>
-    ${res ? `<img class="resim" data-detay="${esc(x.id)}" src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="var d=document.createElement('div');d.className='resim bos';this.replaceWith(d)">` : `<div class="resim bos">${esc((x.magaza_ad || "").slice(0, 10))}</div>`}
-    <div class="govde">
-      <div class="kbas"><div class="kbaslik" ${x.tur === "urun" ? `data-detay="${esc(x.id)}" role="button" tabindex="0"` : ""}>${esc(x.baslik)}</div>${oran}</div>
-      ${fiyatBlok(x)}
-      ${fiyatNot && !canliOk && !x.kosul ? `<div class="fiyatnot">${esc(fiyatNot.trim())}</div>` : ""}
-      ${x.tur === "urun" ? canliBlok(x) : ""}
-      <div class="meta">${esc(x.magaza_ad)} · ${esc(x.kategori_ad || "")} · ${esc(kanalAd(x.kanal))} · ${once(x.ts)}${gor}</div>
-      ${kaynakNot.length ? `<div class="kaynak">${esc(kaynakNot.join(" · "))}</div>` : ""}
-      ${(rozet.length || kodlar.length) ? `<div class="rozetler">${rozet.join("")}${kodlar.join("")}</div>` : ""}
-      <div class="eylem">
-        ${hedef ? `<a class="ana" href="${esc(hedef)}" target="_blank" rel="noopener noreferrer">Fırsata git</a>` : ""}
-        <button type="button" class="ikincil" data-kaydet="${esc(x.id)}" aria-pressed="${kayitli}">${kayitli ? "★ Kaydedildi" : "☆ Kaydet"}</button>
-        <button type="button" class="ikincil" data-paylas="${esc(x.id)}">Paylaş</button>
-        ${x.fiyat != null && !(S.veri && S.veri.onizleme && false) ? `<button type="button" class="ikincil" data-hedef="${esc(x.id)}" aria-pressed="${!!x.alarm_kurulu}">${x.alarm_kurulu ? "🎯 Hedef: " + tl(x.alarm_kurulu.hedef) : "🎯 Hedef fiyat"}</button>` : ""}
-        ${x.tur === "urun" && x.fiyat != null ? `<button type="button" class="ikincil" data-detay="${esc(x.id)}">📈 Fiyat geçmişi</button>` : ""}
-        <a class="kaynak-link" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Kaynak</a>
-      </div>
-      ${S.hedefAcik === x.id && !S.detay ? hedefForm(x) : ""}
-      ${ozetBlok(x)}
-      <details class="metin"><summary>Paylaşım metni</summary><div>${esc(x.metin)}</div></details>
-    </div>
+  if (akd && !bitti) notlar.push(["", akd.fark <= 1 ? "Akakçe’deki en ucuz fiyat seviyesinde" : `Akakçe’de en ucuzu ${tl(akd.en_ucuz)}`]);
+  else if (x.akakce_fark) notlar.push(["", `Akakçe’de diğer satıcılardan %${x.akakce_fark} ucuz`]);
+  if (x.kontrol_et) notlar.push(["uyari", "Fiyat şüpheli derecede düşük; kontrol et"]);
+  if (yas > 3 * 86400) notlar.push(["uyari", `${tarihKisa(x.ts)} tarihli fiyat · bugün geçerli olmayabilir`]);
+  (x.takip || []).forEach(t => notlar.push(["iyi", "Takip: " + t]));
+  if (x.alarm_kurulu) notlar.push(["iyi", "Hedef fiyat: " + tl(x.alarm_kurulu.hedef)]);
+  const kodlar = (x.kodlar || []).map(z => `<button type="button" class="kod" data-kod="${esc(z)}" title="Kopyala">${esc(z)} ⧉</button>`).join("");
+  const ozet = k.gercek != null && (k.gercek > 0 || !["dip", "iyi"].includes(k.kod))
+    ? `Gerçek düşüş: <b>${k.gercek > 0 ? "%" + k.gercek : "yok"}</b>${x.fiyat_ozet ? ` · önceki en düşük ${tl(x.fiyat_ozet.en_dusuk)}` : ""}`
+    : (k.etiket ? esc(k.etiket) : (x.tur === "urun" ? "Fiyat geçmişi birikiyor." : ""));
+  const oto = x.tur === "urun" && link(x.urun_link) && !cs ? ` data-oto="${id}"` : "";
+  const ust = x.kacirilmaz && !bitti ? `<span class="s-yeni">Kaçırılmaz</span>` : yas < 3600 ? `<span class="s-yeni">Yeni</span>` : "";
+  return `<article class="s-kart${bitti ? " s-bitti" : ""}"${oto}>
+    <div class="s-gorsel${res ? "" : " yok"}" data-detay="${id}" role="button" tabindex="0" aria-label="${esc(x.baslik)}">${res ? `<img src="${esc(res)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('yok');this.remove()">` : ""}${x.indirim != null && !bitti ? `<span class="s-oran-rozet">%${x.indirim}${x.varan ? "’e varan" : ""}</span>` : ""}</div>
+    <div class="s-ust-satir"><span class="s-magaza">${esc(x.magaza_ad)}</span><span class="s-sag">${ust}<span>${once(x.ts)}</span></span></div>
+    <h3 class="s-baslik"><a href="#" data-detay="${id}">${esc(x.baslik)}</a></h3>
+    <div class="s-fiyat-satir"><span class="s-fiyat">${fiyat != null ? tl(fiyat) + birim : "—"}</span>${eski ? `<s class="s-eski">${eski}</s>` : ""}</div>
+    <div class="s-karar-satir"><span class="s-rozet k-${k.kod}"${k.etiket ? ` title="${esc(k.etiket)}"` : ""}>${k.ad}</span><span class="s-mini k-${k.kod}">${miniGrafik(x)}</span></div>
+    <p class="s-ozet-satir">${ozet}</p>
+    <ul class="s-notlar">${notlar.map(([c, m]) => `<li${c ? ` class="${c}"` : ""}>${esc(m)}</li>`).join("")}${kodlar ? `<li>${kodlar}</li>` : ""}</ul>
+    <div class="s-kart-alt">${hedef ? `<a class="s-dugme s-git" href="${esc(hedef)}" target="_blank" rel="noopener noreferrer">Fırsata git</a>` : ""}<button type="button" class="s-dugme s-ikincil s-kare" data-detay="${id}" aria-label="Fiyat geçmişi ve ayrıntılar">${IKON_GRAFIK}</button></div>
   </article>`;
 }
 
-function buyukGrafik(x){
-  const n = (x.fiyat_gecmisi || []).map(([ts, f]) => [ts, f]).concat([[x.ts, x.fiyat]]);
-  if (n.length < 2) return "";
-  const G = 400, Y = 210, SOL = 66, SAG = 10, UST = 14, ALT = 28;
-  const t0 = n[0][0], t1 = Math.max(n[n.length - 1][0], t0 + 1);
-  const fs = n.map(z => z[1]); let mn = Math.min(...fs), mx = Math.max(...fs);
-  const pay = (mx - mn) * 0.12 || mx * 0.05 || 1; mn = Math.max(0, mn - pay); mx = mx + pay;
-  const px = t => SOL + (t - t0) / (t1 - t0) * (G - SOL - SAG);
-  const py = f => UST + (1 - (f - mn) / (mx - mn)) * (Y - UST - ALT);
-  const kisa = v => v >= 10000 ? nf.format(Math.round(v / 100) * 100) : nf.format(Math.round(v));
-  const izgara = [0, 0.5, 1].map(k => { const v = mn + (mx - mn) * k, y = py(v).toFixed(1);
-    return `<line x1="${SOL}" x2="${G - SAG}" y1="${y}" y2="${y}" class="bg-izgara"/><text x="${SOL - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end">${kisa(v)} TL</text>`; }).join("");
-  const ort = x.fiyat_ozet ? x.fiyat_ozet.ortalama : null;
-  const ortCizgi = ort ? `<line x1="${SOL}" x2="${G - SAG}" y1="${py(ort).toFixed(1)}" y2="${py(ort).toFixed(1)}" class="bg-ort"/><text x="${G - SAG}" y="${(py(ort) - 5).toFixed(1)}" text-anchor="end">ortalama</text>` : "";
-  // Basamaklı çizgi: fiyat bir sonraki paylaşıma kadar geçerli kabul edilir
-  let yol = ""; n.forEach(([t, f], i) => { yol += i ? ` H${px(t).toFixed(1)} V${py(f).toFixed(1)}` : `M${px(t).toFixed(1)} ${py(f).toFixed(1)}`; });
-  const alan = yol + ` V${Y - ALT} H${px(t0).toFixed(1)} Z`;
-  const noktalar = n.map(([t, f], i) => `<circle cx="${px(t).toFixed(1)}" cy="${py(f).toFixed(1)}" r="${i === n.length - 1 ? 5 : 3}" class="${i === n.length - 1 ? "g-son" : "g-nokta"}"><title>${tarihKisa(t)}: ${tl(f)}</title></circle>`).join("");
-  const orta = t0 + (t1 - t0) / 2;
-  return `<svg class="bgrafik" viewBox="0 0 ${G} ${Y}" role="img" aria-label="Fiyat geçmişi grafiği">
-    ${izgara}${ortCizgi}<path d="${alan}" class="g-alan"/><path d="${yol}" class="g-cizgi" fill="none"/>${noktalar}
-    <text x="${SOL}" y="${Y - 9}">${tarihKisa(t0)}</text><text x="${px(orta).toFixed(1)}" y="${Y - 9}" text-anchor="middle">${tarihKisa(orta)}</text><text x="${G - SAG}" y="${Y - 9}" text-anchor="end">şimdi</text></svg>`;
+function vitrinCiz(){
+  const kutu = $("#one"); if (!kutu) return;
+  const simdi = Date.now() / 1000;
+  const d = S.veri ? S.veri.firsatlar.filter(x => x.tur === "urun" && !x.bitti && !bittiMi(x) && x.fiyat != null && (x.fiyat_gecmisi || []).length && simdi - x.ts < 2 * 86400) : [];
+  const puan = x => { const k = kararHesap(x); return (k.kod === "dip" ? 1000 : 500) + (k.gercek || 0) + (x.kacirilmaz ? 200 : 0); };
+  const aday = d.filter(x => ["dip", "iyi"].includes(kararHesap(x).kod)).sort((a, b) => puan(b) - puan(a))[0];
+  kutu.hidden = !aday;
+  if (!aday) { kutu.innerHTML = ""; return; }
+  const k = kararHesap(aday), o = aday.fiyat_ozet, fiyat = aday.indirimli_fiyat ?? aday.fiyat;
+  const eski = aday.satis_fiyati != null && aday.satis_fiyati > fiyat * 1.01 ? `<s class="s-eski">${tl(aday.satis_fiyati)}</s>` : "";
+  kutu.innerHTML = `<div class="s-one-ust"><span class="s-ust-yazi">Günün düşüşü</span><span class="s-rozet k-${k.kod}">${k.ad}</span></div>
+    <div><div class="s-soluk" style="font-size:14px">${esc(aday.magaza_ad)} · ${once(aday.ts)}</div><h2 class="s-one-baslik">${esc(aday.baslik)}</h2></div>
+    <div class="s-fiyat-satir"><span class="s-fiyat s-dev">${tl(fiyat)}</span>${eski}</div>
+    ${miniGrafik(aday, true)}
+    <div class="s-kutucuklar">
+      <div class="s-kutucuk"><span>Mağazanın dediği</span><b>${aday.indirim != null ? "%" + aday.indirim : "—"}</b></div>
+      <div class="s-kutucuk s-mavi"><span>Gerçek düşüş</span><b>${k.gercek != null && k.gercek > 0 ? "%" + k.gercek : (["dip", "iyi"].includes(k.kod) ? "dip fiyat" : k.gercek != null ? "yok" : "—")}</b></div>
+      <div class="s-kutucuk"><span>Normal fiyat</span><b>${o ? tl(o.ortalama) : "—"}</b></div>
+    </div>
+    <button type="button" class="s-dugme s-ikincil s-tam" data-detay="${esc(aday.id)}">Fiyat geçmişini incele</button>`;
 }
+
+function buyukGrafik(x){
+  const n = (x.fiyat_gecmisi || []).map(([t, f]) => [t, f]).concat([[x.ts, x.indirimli_fiyat ?? x.fiyat]]).filter(z => z[1] != null);
+  if (n.length < 2) return `<div class="s-grafik-yok">Bu ürün için henüz fiyat geçmişi yok. Kayıtlar biriktikçe grafik burada görünecek.</div>`;
+  const G = 800, Y = 240, P = 16, normal = x.fiyat_ozet ? x.fiyat_ozet.ortalama : null;
+  const fs = n.map(z => z[1]), hep = fs.concat(normal ? [normal] : []);
+  const lo = Math.min(...hep), hi = Math.max(...hep), ar = (hi - lo) || 1, t0 = n[0][0], ta = (n[n.length - 1][0] - t0) || 1;
+  const xy = (t, f) => [((t - t0) / ta * G).toFixed(1), (hi === lo ? Y / 2 : P + (1 - (f - lo) / ar) * (Y - 2 * P)).toFixed(1)];
+  const c = n.map(([t, f]) => xy(t, f).join(",")).join(" ");
+  const ny = normal ? (y => `<line class="normal-cizgi" x1="0" x2="${G}" y1="${y}" y2="${y}"/>`)(xy(t0, normal)[1]) : "";
+  const etiket = `Fiyat grafiği: ${tarihKisa(t0)} ile bugün arası, en düşük ${tl(Math.min(...fs))}, en yüksek ${tl(Math.max(...fs))}`;
+  return `<div class="s-grafik-kutu"><svg class="s-grafik s-grafik-buyuk" viewBox="0 0 ${G} ${Y}" preserveAspectRatio="none" role="img" aria-label="${esc(etiket)}"><polygon class="alan-dolgu" points="0,${Y} ${c} ${G},${Y}"/>${ny}<polyline class="cizgi" points="${c}"/></svg>
+    ${Math.max(...fs) === Math.min(...fs) ? `<span class="s-grafik-etiket ust-e">Fiyat değişmedi: ${tl(fs[0])}</span>` : `<span class="s-grafik-etiket ust-e">En yüksek ${tl(Math.max(...fs))}</span><span class="s-grafik-etiket alt-e">En düşük ${tl(Math.min(...fs))}</span>`}</div>
+    <div class="s-grafik-tarih"><span>${tarihKisa(t0)}</span><span>${normal && normal !== fs[0] ? "Kesikli çizgi: normal fiyat " + tl(normal) : ""}</span><span>Bugün</span></div>`;
+}
+
 function detayHTML(x){
   const o = x.fiyat_ozet, res = link(x.resim), hedef = link(x.urun_link);
   const n = (x.fiyat_gecmisi || []).map(([ts, f]) => ({ts, f})).concat([{ts: x.ts, f: x.fiyat, simdi: true}]);
@@ -5225,7 +5470,7 @@ function detayHTML(x){
     return `<tr><td>${new Date(z.ts * 1000).toLocaleString("tr-TR", {day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"})}${z.simdi ? " · bu paylaşım" : ""}</td><td class="sag">${tl(z.f)}</td><td class="sag">${deg == null || Math.abs(deg) < 0.5 ? "–" : `<span class="${deg < 0 ? "dus" : "art"}">${deg < 0 ? "▼" : "▲"} %${nf.format(Math.abs(Math.round(deg * 10) / 10))}</span>`}</td></tr>`; }).join("");
   const tabloBolum = n.length >= 2 ? `<section class="d-bolum"><h2>Tüm fiyat kayıtları</h2><table class="d-tablo"><thead><tr><th>Tarih</th><th class="sag">Fiyat</th><th class="sag">Değişim</th></tr></thead><tbody>${satirlar}</tbody></table></section>` : "";
   const kayitli = !!kayitlilar()[x.id];
-  return `<div class="d-ust"><button type="button" data-detaykapat="1">← Geri</button><span>${esc(x.magaza_ad)} · ${esc(x.kategori_ad || "")}</span></div>
+  return `<div class="s-detay-kutu"><div class="d-ust"><button type="button" data-detaykapat="1">← Geri</button><span>${esc(x.magaza_ad)} · ${esc(x.kategori_ad || "")}</span></div>
     <div class="d-ic">
       <div class="d-bas">${res ? `<img src="${esc(res)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<div><h1>${esc(x.baslik)}</h1><div class="meta">${esc(kanalAd(x.kanal))} · ${once(x.ts)}${x.dusus_etiketi ? ` · <b class="dus">📉 ${esc(x.dusus_etiketi)}</b>` : ""}</div></div></div>
       ${Date.now() / 1000 - x.ts > 3 * 86400 ? `<div class="not" style="margin-top:10px">⚠️ Bu fiyat ${tarihKisa(x.ts)} tarihli bir paylaşımdan. Bugünkü fiyat farklıdır; güncel fiyat için “Fırsata git” ya da Akakçe’ye bakın.</div>` : ""}
@@ -5237,11 +5482,13 @@ function detayHTML(x){
         ${link(x.cimri) ? `<a href="${esc(x.cimri)}" target="_blank" rel="noopener noreferrer">Cimri’de karşılaştır</a>` : ""}
         <button type="button" data-hedef="${esc(x.id)}">${x.alarm_kurulu ? "🎯 Hedef: " + tl(x.alarm_kurulu.hedef) : "🎯 Hedef fiyat"}</button>
         <button type="button" data-kaydet="${esc(x.id)}" aria-pressed="${kayitli}">${kayitli ? "★ Kaydedildi" : "☆ Kaydet"}</button>
+        <button type="button" data-paylas="${esc(x.id)}">Paylaş</button>
+        <a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Kaynak paylaşım</a>
       </div>
       ${S.hedefAcik === x.id ? hedefForm(x) : ""}
       ${magazaBolum}${gecmisBolum}${tabloBolum}
       <details class="metin d-bolum"><summary>Paylaşım metni</summary><div>${esc(x.metin)}</div></details>
-    </div>`;
+    </div></div>`;
 }
 function canliBlok(x){
   const c = (S.canli || {})[x.id] || x.canli;
@@ -5312,11 +5559,11 @@ function detayKapat(){ if (!S.detay) return; if (history.state && history.state.
 window.addEventListener("popstate", () => { if (S.detay) { S.detay = null; S.hedefAcik = null; detayCiz(); ciz(); } });
 document.addEventListener("click", e => {
   const d = e.target.closest("[data-detay]"); if (d) { e.preventDefault(); detayAc(d.dataset.detay); return; }
-  if (e.target.closest("[data-detaykapat]")) detayKapat();
+  if (e.target.closest("[data-detaykapat]") || e.target.id === "detay") detayKapat();
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && S.detay) detayKapat();
-  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".kbaslik[data-detay]")) { e.preventDefault(); detayAc(e.target.dataset.detay); }
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".kbaslik[data-detay],.s-gorsel[data-detay]")) { e.preventDefault(); detayAc(e.target.dataset.detay); }
 });
 
 function hedefForm(x){
@@ -5332,32 +5579,27 @@ function hedefForm(x){
 
 function kuponKart(x){
   const hedef = link(x.urun_link);
-  const kodlar = (x.kodlar || []).map(k => `<button type="button" class="kod buyuk" data-kod="${esc(k)}" title="Kopyala">${esc(k)} <span aria-hidden="true">⧉</span></button>`).join("");
-  let bas = x.kupon_tutar ? `${tl(x.kupon_tutar)} indirim` : (x.indirim ? `%${x.indirim} indirim` : esc(x.baslik));
+  const kodlar = (x.kodlar || []).map(z => `<button type="button" class="kod buyuk" data-kod="${esc(z)}" title="Kopyala">${esc(z)} <span aria-hidden="true">⧉</span></button>`).join("");
+  const bas = x.kupon_tutar ? `${tl(x.kupon_tutar)} indirim` : (x.indirim ? `%${x.indirim} indirim` : esc(x.baslik));
   const alt = [];
   if (x.kupon_limit) alt.push(`${tl(x.kupon_limit)} ve üzeri alışverişte`);
   if (x.kupon_tutar && x.kupon_limit) alt.push(`sepete oranı %${Math.round(x.kupon_tutar / x.kupon_limit * 100)}`);
-  const rozet = [];
-  (x.takip || []).forEach(t => rozet.push(`<span class="rozet r-takip">Takip: ${esc(t)}</span>`));
-  const sg = sonGunYazi(x); if (sg) rozet.push(`<span class="rozet ${sg[1]}">${sg[0]}</span>`);
-  if (x.uygulama) rozet.push(`<span class="rozet r-mavi">Yalnızca mobil uygulamada</span>`);
-  if (x.ilk_siparis) rozet.push(`<span class="rozet r-sari">İlk siparişe özel</span>`);
+  const notlar = [];
+  (x.takip || []).forEach(t => notlar.push(["iyi", "Takip: " + t]));
+  const sg = sonGunYazi(x); if (sg) notlar.push([sg[1] === "r-kirmizi" ? "uyari" : "", sg[0]]);
+  if (x.uygulama) notlar.push(["", "Yalnızca mobil uygulamada"]);
+  if (x.ilk_siparis) notlar.push(["", "İlk siparişe özel"]);
   const kanallar = [...new Set([kanalAd(x.kanal)].concat((x.diger || []).map(z => kanalAd(z.kanal))))];
-  if (kanallar.length > 1) rozet.push(`<span class="rozet r-yesil">${kanallar.length} kanalda paylaşıldı</span>`);
+  if (kanallar.length > 1) notlar.push(["iyi", `${kanallar.length} kanalda paylaşıldı`]);
   const kayitli = !!kayitlilar()[x.id];
-  return `<article class="kart kupon">
-    <div class="kupon-ust"><span class="magaza">${esc(x.magaza_ad)}</span><span class="meta">${esc(kanalAd(x.kanal))} · ${once(x.ts)}</span></div>
-    <div class="kupon-bas">${bas}</div>
-    ${alt.length ? `<div class="meta">${esc(alt.join(" · "))}</div>` : ""}
-    <div class="kodlar">${kodlar}</div>
-    ${rozet.length ? `<div class="rozetler">${rozet.join("")}</div>` : ""}
-    <div class="eylem">
-      ${hedef ? `<a class="ana" href="${esc(hedef)}" target="_blank" rel="noopener noreferrer">Mağazaya git</a>` : ""}
-      <button type="button" class="ikincil" data-kaydet="${esc(x.id)}" aria-pressed="${kayitli}">${kayitli ? "★ Kaydedildi" : "☆ Kaydet"}</button>
-      <button type="button" class="ikincil" data-paylas="${esc(x.id)}">Paylaş</button>
-      <a class="kaynak-link" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Kaynak</a>
-    </div>
-    <details class="metin"><summary>Paylaşım metni ve koşullar</summary><div>${esc(x.metin)}</div></details>
+  return `<article class="s-kart s-kupon">
+    <div class="s-ust-satir"><span class="s-magaza">${esc(x.magaza_ad)}</span><span class="s-sag"><span>${once(x.ts)}</span></span></div>
+    <div class="s-kupon-bas">${bas}</div>
+    ${alt.length ? `<p class="s-ozet-satir">${esc(alt.join(" · "))}</p>` : ""}
+    ${x.kupon_tutar || x.indirim ? `<h3 class="s-baslik">${esc(x.baslik)}</h3>` : ""}
+    ${kodlar ? `<div class="s-kodlar">${kodlar}</div>` : ""}
+    <ul class="s-notlar">${notlar.map(([c, m]) => `<li${c ? ` class="${c}"` : ""}>${esc(m)}</li>`).join("")}</ul>
+    <div class="s-kart-alt">${hedef ? `<a class="s-dugme s-git" href="${esc(hedef)}" target="_blank" rel="noopener noreferrer">Mağazaya git</a>` : `<a class="s-dugme s-git" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer">Paylaşımı aç</a>`}<button type="button" class="s-dugme s-ikincil s-kare" data-kaydet="${esc(x.id)}" aria-pressed="${kayitli}" aria-label="${kayitli ? "Kayıttan çıkar" : "Kaydet"}">${kayitli ? "★" : "☆"}</button><button type="button" class="s-dugme s-ikincil s-kare" data-paylas="${esc(x.id)}" aria-label="Paylaş">${IKON_PAYLAS}</button></div>
   </article>`;
 }
 
@@ -5397,7 +5639,7 @@ function takipCiz(){
     <h2 class="bolum">Kelimelerine uyan fırsatlar <span class="say">${eslesen.length}</span></h2>
     ${kelimeler.length ? (eslesen.length ? eslesen.slice(0, S.limit).map(kartSec).join("") : `<div class="bos-durum">Şu an kelimelerine uyan fırsat yok. Yeni paylaşımlar her yenilemede kontrol edilir.</div>`) : `<div class="bos-durum">Henüz kelime eklemedin. Yukarıdan bir ürün adı ekle.</div>`}
     <h2 class="bolum">Kaydettiklerin <span class="say">${kayitli.length}</span></h2>
-    ${kayitli.length ? kayitli.map(k => { const g = guncel(k.id); return g ? kartSec(g) : kartSec(Object.assign({}, k, {rozetler: (k.rozetler || []), _eski: true})).replace('<article class="kart', '<article class="kart soluk'); }).join("") : `<div class="bos-durum">Kartlardaki “☆ Kaydet” ile fırsatları buraya ekleyebilirsin.</div>`}`;
+    ${kayitli.length ? kayitli.map(k => { const g = guncel(k.id); return g ? kartSec(g) : kartSec(Object.assign({}, k, {rozetler: (k.rozetler || []), _eski: true})).replace('<article class="s-kart', '<article class="s-kart s-bitti'); }).join("") : `<div class="bos-durum">Kartlardaki “☆ Kaydet” ile fırsatları buraya ekleyebilirsin.</div>`}`;
 }
 
 async function takipKaydet(liste){
@@ -5463,29 +5705,28 @@ function listeCiz(){
           </tbody></table></section>` : "") + arsivBolum;
   }
   else govde = d.slice(0, S.limit).map(kartSec).join("") + (d.length > S.limit ? `<button type="button" class="daha" id="daha">Daha fazla göster (${d.length - S.limit})</button>` : "");
+  const BASLIK = {kac: "Kaçırılmaz", one: "Öne çıkanlar", ucuz: "Ucuzlayanlar", tum: "Son düşenler", kupon: "Kupon & kampanya"};
+  const magSec = `<select id="magazaSec" aria-label="Mağaza"><option value="hepsi">Tüm mağazalar</option>${Object.entries(magazalar).sort((a, b) => b[1].n - a[1].n).map(([k, v]) =>
+    `<option value="${esc(k)}" ${S.f.magaza === k ? "selected" : ""}>${esc(v.ad)} (${v.n})</option>`).join("")}</select>`;
+  const minSec = `<select id="min" aria-label="En az indirim">${[[0,"Tüm oranlar"],[-1,"Oranı bilinenler"],[10,"%10 ve üstü"],[20,"%20 ve üstü"],[30,"%30 ve üstü"],[50,"%50 ve üstü"]].map(([v,a]) => `<option value="${v}" ${S.f.min === v ? "selected" : ""}>${a}</option>`).join("")}</select>`;
+  const siraSec = `<select id="sirala" aria-label="Sıralama">${[["indirim","En yüksek indirim"],["yeni","En yeni"],["populer","En çok görülen"],["ucuz","En düşük fiyat"]].map(([v,a]) => `<option value="${v}" ${S.f.sirala === v ? "selected" : ""}>${a}</option>`).join("")}</select>`;
+  const sureSec = `<select id="sure" aria-label="Paylaşım zamanı">${[[6,"Son 6 saat"],[24,"Son 24 saat"],[72,"Son 3 gün"],[0,"Tüm kayıtlar"]].map(([v,a]) => `<option value="${v}" ${((S.f.sure || {})[S.sekme] ?? 72) === v ? "selected" : ""}>${a}</option>`).join("")}</select>`;
+  const anahtar = S.sekme === "kupon"
+    ? `<label class="s-anahtar"><input type="checkbox" id="gecmisGizle" ${S.f.gecmisGizle ? "checked" : ""}> Süresi geçenleri gizle</label>`
+    : `<label class="s-anahtar"><input type="checkbox" id="gercekSec" ${S.f.gercek ? "checked" : ""}> Sadece gerçek indirimler</label><label class="s-anahtar"><input type="checkbox" id="ikinciEl" ${S.f.ikinciEl ? "checked" : ""}> 2. el</label>`;
+  const notP = not.replace('<div class="not">', '<p class="s-not">').replace(/<\/div>\s*$/, "</p>");
   $("#icerik").innerHTML = `
-    <div class="filtre">
-      <input type="search" id="ara" placeholder="Ürün ara (ör. airfryer, kulaklık)" value="${esc(S.f.ara)}" autocomplete="off">
-      ${katCipler && !arama ? `<div class="cipler">${katCipler}</div>` : ""}
-      ${arama ? "" : `<div class="cipler">${cipler}</div>`}
-      <div class="satir">
-        ${arama ? "" : `<select id="min" aria-label="En az indirim">
-          ${[[0,"Tüm oranlar"],[-1,"Oranı bilinenler"],[10,"%10 ve üstü"],[20,"%20 ve üstü"],[30,"%30 ve üstü"],[50,"%50 ve üstü"]].map(([v,a]) => `<option value="${v}" ${S.f.min === v ? "selected" : ""}>${a}</option>`).join("")}
-        </select>`}
-        <select id="sirala" aria-label="Sıralama">
-          ${[["indirim","En yüksek indirim"],["yeni","En yeni"],["populer","En çok görülen"],["ucuz","En ucuz"]].map(([v,a]) => `<option value="${v}" ${S.f.sirala === v ? "selected" : ""}>${a}</option>`).join("")}
-        </select>
+    <div class="s-bolum-bas">
+      <div><h2 class="s-bolum-baslik">${arama ? "Arama sonuçları" : (BASLIK[S.sekme] || "")}</h2>${arama ? "" : `<p class="s-soluk">${d.length} ${S.sekme === "kupon" ? "kod ve kampanya" : "fırsat · fiyatlar kayıtlı fiyatlarla karşılaştırıldı"}</p>`}</div>
+      <div class="s-arac">
+        <label class="s-sr" for="ara">Fırsatlarda ara</label>
+        <input type="search" id="ara" class="s-alan" placeholder="Fırsatlarda ara" value="${esc(S.f.ara)}" autocomplete="off">
+        ${arama ? siraSec : magSec + minSec + siraSec + sureSec + anahtar}
       </div>
-      ${arama ? "" : `<div class="satir">
-        <select id="sure" aria-label="Paylaşım zamanı">
-          ${[[6,"Son 6 saat"],[24,"Son 24 saat"],[72,"Son 3 gün"],[0,"Tüm kayıtlar"]].map(([v,a]) => `<option value="${v}" ${((S.f.sure || {})[S.sekme] ?? 72) === v ? "selected" : ""}>${a}</option>`).join("")}
-        </select>
-        ${S.sekme === "kupon"
-          ? `<label class="anahtar"><input type="checkbox" id="gecmisGizle" ${S.f.gecmisGizle ? "checked" : ""}> Süresi geçenleri gizle</label>`
-          : `<label class="anahtar"><input type="checkbox" id="ikinciEl" ${S.f.ikinciEl ? "checked" : ""}> 2. el ürünler</label>`}
-      </div>`}
-      ${S.sekme === "kupon" && !arama ? `<div class="cipler">${[["hepsi","Hepsi"],["kod","Kupon kodları"],["kampanya","Kampanyalar"]].map(([v,a]) => `<button type="button" class="cip" data-kupontur="${v}" aria-pressed="${S.f.kuponTur === v}">${a}</button>`).join("")}</div>` : ""}
-    </div>${arama ? aramaBas : not}${arama && !d.length ? katalogBolumu() : ""}${govde}${arama && d.length ? katalogBolumu() : ""}`;
+    </div>
+    ${katCipler && !arama ? `<div class="s-cipler">${katCipler}</div>` : ""}
+    ${S.sekme === "kupon" && !arama ? `<div class="s-cipler">${[["hepsi","Hepsi"],["kod","Kupon kodları"],["kampanya","Kampanyalar"]].map(([v,a]) => `<button type="button" class="cip" data-kupontur="${v}" aria-pressed="${S.f.kuponTur === v}">${a}</button>`).join("")}</div>` : ""}
+    ${arama ? aramaBas : notP}${arama && !d.length ? katalogBolumu() : ""}${govde}${arama && d.length ? katalogBolumu() : ""}`;
 }
 
 function takvimCiz(){
@@ -6132,6 +6373,10 @@ document.addEventListener("submit", e => {
 function ciz(){ cizGovde(); detayCiz(); canliGozle(); }
 function cizGovde(){
   ust(); navCiz();
+  const listeSekme = ["kac", "one", "ucuz", "tum", "kupon"].includes(S.sekme);
+  $("#kahraman").hidden = !listeSekme; $("#nasil").hidden = !listeSekme;
+  if (listeSekme) vitrinCiz();
+  const ua = $("#ustAra"); if (ua && document.activeElement !== ua) ua.value = S.f.ara;
   if (S.sekme === "takvim") takvimCiz();
   else if (S.sekme === "takip") { if (document.activeElement && ["takipKelime", "urunLink"].includes(document.activeElement.id)) return; takipCiz(); }
   else if (S.sekme === "market") { const ae = document.activeElement; if (ae && ae.tagName === "SELECT" && ae.id && ae.id.startsWith("m")) return; marketCiz(); }
@@ -6301,7 +6546,9 @@ document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.id === "takipKelime") { const b = $("#takipEkle"); if (b) b.click(); }
 });
 document.addEventListener("input", e => {
-  if (e.target.id === "ara") {
+  if (e.target.id === "ara" || e.target.id === "ustAra") {
+    if (e.target.id === "ustAra" && !["one", "ucuz", "tum", "kupon"].includes(S.sekme)) S.sekme = "tum";
+    const diger = $(e.target.id === "ara" ? "#ustAra" : "#ara"); if (diger) diger.value = e.target.value;
     S.f.ara = e.target.value; S.limit = 60; S.araDurum = null; sakla(); ciz();
     clearTimeout(S.araZaman);
     const q = S.f.ara.trim();
@@ -6320,6 +6567,8 @@ document.addEventListener("change", e => {
   if (t.id === "min") { S.f.min = +t.value; sakla(); ciz(); }
   else if (t.id === "sirala") { S.f.sirala = t.value; sakla(); ciz(); if (aramaVar()) katalogAra(S.f.ara.trim()); }
   else if (t.id === "ikinciEl") { S.f.ikinciEl = t.checked; sakla(); ciz(); }
+  else if (t.id === "gercekSec") { S.f.gercek = t.checked; S.limit = 60; sakla(); ciz(); }
+  else if (t.id === "magazaSec") { S.f.magaza = t.value; S.limit = 60; sakla(); ciz(); }
   else if (t.id === "gecmisGizle") { S.f.gecmisGizle = t.checked; sakla(); ciz(); }
   else if (t.id === "sure") { S.f.sure = Object.assign({}, S.f.sure, {[S.sekme]: +t.value}); sakla(); ciz(); }
   else if (t.id === "kupon_ara" && S.ayarTaslak) { S.ayarTaslak.kupon_ara = t.checked; }
@@ -6328,6 +6577,13 @@ document.addEventListener("change", e => {
   else if (S.ayarTaslak && ["aralik_dk","sayfa","bildirim_esik","saklama_gun"].includes(t.id)) { S.ayarTaslak[t.id] = +t.value; }
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden) yukle(); });
+document.addEventListener("submit", e => {
+  if (e.target.id !== "ustAraForm") return;
+  e.preventDefault();
+  const q = S.f.ara.trim();
+  if (q.length >= 2) { clearTimeout(S.araZaman); kanallardaAra(q); }
+  $("#icerik").scrollIntoView({behavior: "smooth"});
+});
 yukle();
 </script>
 </body>
