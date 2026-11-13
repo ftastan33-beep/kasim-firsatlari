@@ -357,6 +357,11 @@ function ciz() {
   }
   $("#sayac").textContent = durum.guncelleme
     ? `${l.length} fırsat · fiyatlar son 90 günle karşılaştırıldı` : "";
+  // Telefon: filtre düğmesindeki aktif filtre sayısı ve paneldeki sonuç sayısı
+  const aktif = (durum.magaza ? 1 : 0) + (durum.sirala !== "gercek" ? 1 : 0) + (durum.sadece ? 1 : 0);
+  const fs = $("#filtre-sayi");
+  fs.hidden = !aktif; fs.textContent = String(aktif);
+  $("#filtre-kapat").textContent = durum.guncelleme ? `${l.length} sonucu göster` : "Sonuçları göster";
 }
 
 // ---------------------------------------------------------------- ayrıntı
@@ -410,13 +415,20 @@ function detayAc(id, hashGuncelle = true) {
   t.textContent = "✔ " + once(u.teyit) + " mağazada teyit edildi";
   t.title = "Mağaza sayfasında kontrol: " + new Date(u.teyit * 1000).toLocaleString("tr-TR");
   $("[data-git]", detay).href = u.link;
-  if (!detay.open) { if (detay.showModal) detay.showModal(); else detay.setAttribute("open", ""); }
+  if (!detay.open) {
+    filtreKapat();
+    if (detay.showModal) detay.showModal(); else detay.setAttribute("open", "");
+    detay.scrollTop = 0;
+    document.body.classList.add("kilit");
+  }
   if (hashGuncelle && location.hash !== "#u-" + id) history.pushState(null, "", "#u-" + id);
 }
 function detayKapat() {
   if (detay.open) detay.close();
 }
 detay.addEventListener("close", () => {
+  document.body.classList.remove("kilit");
+  detay.style.transform = "";
   if (location.hash.startsWith("#u-")) history.replaceState(null, "", location.pathname + location.search);
 });
 detay.addEventListener("click", (e) => { if (e.target === detay) detayKapat(); });
@@ -428,6 +440,64 @@ function hashAc() {
 }
 window.addEventListener("hashchange", hashAc);
 window.addEventListener("popstate", hashAc);
+
+// Telefon: ayrıntı sayfası en üstteyken aşağı çekilince kapanır
+const telefon = matchMedia("(max-width: 720px)");
+(() => {
+  let basY = null, fark = 0;
+  detay.addEventListener("touchstart", (e) => {
+    basY = telefon.matches && detay.scrollTop <= 0 ? e.touches[0].clientY : null;
+    fark = 0;
+  }, { passive: true });
+  detay.addEventListener("touchmove", (e) => {
+    if (basY == null) return;
+    fark = e.touches[0].clientY - basY;
+    if (fark < 0 || detay.scrollTop > 0) { basY = null; detay.style.transform = ""; return; }
+    detay.style.transition = "none";
+    detay.style.transform = `translateY(${fark}px)`;
+  }, { passive: true });
+  detay.addEventListener("touchend", () => {
+    if (basY == null) return;
+    detay.style.transition = "transform .2s ease";
+    if (fark > 110) detayKapat();
+    else detay.style.transform = "";
+    basY = null;
+  });
+})();
+
+// Telefon: filtre paneli
+const panel = $("#filtre-panel"), perde = $("#perde"), filtreDugme = $("#filtre-ac");
+function filtreAc() {
+  panel.classList.add("acik"); perde.hidden = false;
+  filtreDugme.setAttribute("aria-expanded", "true");
+  document.body.classList.add("kilit");
+}
+function filtreKapat() {
+  if (!panel.classList.contains("acik")) return;
+  panel.classList.remove("acik"); perde.hidden = true;
+  filtreDugme.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("kilit");
+}
+filtreDugme.addEventListener("click", filtreAc);
+perde.addEventListener("click", filtreKapat);
+$("#filtre-kapat").addEventListener("click", () => { filtreKapat(); $("#firsatlar").scrollIntoView(); });
+$("#filtre-temizle").addEventListener("click", () => {
+  durum.magaza = ""; durum.sirala = "gercek"; durum.sadece = false;
+  $("#magaza").value = ""; $("#sirala").value = "gercek"; $("#sadece").checked = false;
+  sakla("sirala", "gercek"); sakla("sadece", "");
+  ciz();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") filtreKapat(); });
+telefon.addEventListener("change", () => { if (!telefon.matches) filtreKapat(); });
+
+// Arama çubuğu yapışınca altına ince çizgi
+const cubuk = $(".arama-cubuk");
+const isaret = el("div", "isaret"); isaret.setAttribute("aria-hidden", "true");
+cubuk.before(isaret);
+if ("IntersectionObserver" in window) {
+  new IntersectionObserver(([g]) => cubuk.classList.toggle("yapisik", !g.isIntersecting && g.boundingClientRect.top < 100),
+    { rootMargin: "-80px 0px 0px 0px" }).observe(isaret);
+}
 
 // ---------------------------------------------------------------- kontroller
 let araZaman;

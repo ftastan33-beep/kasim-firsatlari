@@ -101,6 +101,7 @@ h1, h2, h3 { line-height: 1.15; }
 /* Günün düşüşü */
 .one { flex: 1 1 400px; min-width: 0; max-width: 560px; background: var(--kart); border: 1px solid var(--cizgi);
   border-radius: 22px; padding: 22px; box-shadow: var(--golge); display: flex; flex-direction: column; gap: 14px; }
+.one[hidden] { display: none; }
 .one-ust { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .ust-yazi { font-size: 12.5px; font-weight: 700; color: var(--soluk); text-transform: uppercase; letter-spacing: .08em; }
 .one-baslik { margin: 2px 0 0; font-size: 19px; font-weight: 600; line-height: 1.3;
@@ -140,8 +141,18 @@ h1, h2, h3 { line-height: 1.15; }
 .bolum-baslik { margin: 0 0 6px; font-size: clamp(28px, 4vw, 36px); letter-spacing: -.03em; font-weight: 800; }
 .bolum-bas p { margin: 0; }
 .arac { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.arama-cubuk { display: flex; gap: 8px; align-items: center; }
 .arac #ara { width: 220px; }
-@media (max-width: 720px) { .arac { width: 100%; } .arac #ara { flex: 1 1 100%; width: auto; } .arac select { flex: 1 1 40%; } }
+.filtre-panel { display: contents; }
+.filtre-ac, .panel-bas, .panel-alt, .tutamac { display: none; }
+.filtre-ac { position: relative; }
+.filtre-sayi { position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+  background: var(--vurgu); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+.filtre-sayi[hidden] { display: none; }
+.perde { position: fixed; inset: 0; z-index: 20; background: rgba(16, 17, 20, .5); }
+.perde[hidden] { display: none; }
+.isaret { display: none; }
+#firsatlar { scroll-margin-top: 66px; }
 .anahtar { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 14px; background: var(--kart);
   border: 1px solid var(--cizgi-koyu); border-radius: 12px; font-size: 14.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
 .anahtar input { width: 18px; height: 18px; accent-color: var(--mavi-cizgi); margin: 0; }
@@ -285,3 +296,70 @@ h1, h2, h3 { line-height: 1.15; }
   .kart { animation: belir .25s ease-out both; }
   @keyframes belir { from { opacity: 0; transform: translateY(4px); } }
 }
+
+/* ------------------------------------------------------------------ Telefon düzeni
+   Amaç: ilk ekranda fırsatlar görünsün; tek arama kutusu üstte sabit kalsın;
+   filtreler alttan açılan panelde, ürün ayrıntısı alttan açılan sayfada. */
+@media (max-width: 720px) {
+  /* Kahraman: yalnızca kısa başlık ve durum satırı */
+  .kahraman-ic { padding-top: 16px; padding-bottom: 14px; gap: 0; }
+  .kahraman-metin { gap: 6px; flex-basis: 100%; }
+  .kahraman h1 { font-size: 24px; line-height: 1.15; letter-spacing: -.025em; }
+  .kahraman h1 br { display: none; }
+  .etiket-ust, .giris-p, .ara-kutu, .ozellikler, .one { display: none; }
+  .durum { font-size: 13px; }
+
+  /* Fırsatlar bölümü */
+  #firsatlar.bolum { padding-top: 14px; }
+  #firsatlar .bolum-bas { display: contents; }
+  #firsatlar .bolum-bas > div:first-child { margin-bottom: 4px; }
+  .bolum-baslik { font-size: 22px; margin-bottom: 2px; }
+  #sayac { font-size: 13px; }
+
+  /* Sabit arama çubuğu */
+  .isaret { display: block; height: 1px; }
+  .arac { display: contents; }
+  .arama-cubuk { position: sticky; top: calc(65px + env(safe-area-inset-top)); z-index: 9;
+    margin: 0 -20px 4px; padding: 8px 20px; background: var(--zemin); border-bottom: 1px solid transparent; }
+  .arama-cubuk.yapisik { border-bottom-color: var(--cizgi); box-shadow: 0 6px 14px -12px rgba(0, 0, 0, .35); }
+  .arac #ara { flex: 1; width: auto; min-height: 46px; }
+  .filtre-ac { display: inline-flex; width: 46px; min-height: 46px; padding: 0; flex-shrink: 0; }
+
+  /* Filtre paneli: alttan açılır */
+  .filtre-panel { display: flex; flex-direction: column; gap: 12px; position: fixed; z-index: 21; left: 0; right: 0; bottom: 0;
+    max-height: 85dvh; overflow-y: auto; background: var(--kart); border-radius: 22px 22px 0 0;
+    padding: 10px 20px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -20px 50px -20px rgba(0, 0, 0, .4);
+    transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s linear .25s; }
+  .filtre-panel.acik { transform: none; visibility: visible; transition: transform .25s ease; }
+  .panel-bas { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 17px; padding-bottom: 4px; }
+  .filtre-panel .alan, .filtre-panel .anahtar { width: 100%; min-height: 50px; }
+  .panel-alt { display: flex; gap: 10px; margin-top: 4px; }
+  .panel-alt .dugme { flex: 1; min-height: 50px; }
+  .tutamac { display: block; width: 40px; height: 5px; border-radius: 99px; background: var(--cizgi-koyu); }
+
+  /* Ürün ayrıntısı: alttan açılan sayfa */
+  .detay { width: 100%; max-width: 100%; margin: auto 0 0; max-height: 92dvh; border-radius: 22px 22px 0 0;
+    overscroll-behavior: contain; }
+  .detay[open] { animation: yukari .25s ease-out; }
+  .detay-ic { padding: 8px 18px 0; gap: 14px; }
+  .detay-tutamac { display: block; align-self: center; margin-bottom: 2px; }
+  .kapat { top: 10px; right: 10px; width: 40px; height: 40px; }
+  .detay-bilgi { padding-right: 0; }
+  .detay-baslik { font-size: 18px; padding-right: 44px; }
+  .buyuk-gorsel { height: 150px; order: 2; }
+  .detay-bilgi { order: 1; }
+  .detay-alt { position: sticky; bottom: 0; z-index: 2; margin: 0 -18px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+    background: var(--kart); border-top: 1px solid var(--cizgi); flex-wrap: nowrap; }
+  .detay-alt .dugme { flex: 1 1 auto; }
+  .teyit { flex: 0 1 auto; font-size: 12px; line-height: 1.3; }
+
+  /* Telegram bandı ve alt bilgi daha az yer kaplasın */
+  .bant { padding: 22px; border-radius: 20px; }
+  .bant p { font-size: 15px; }
+}
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .filtre-panel, .filtre-panel.acik { transition: none; }
+  .detay[open] { animation: none; }
+}
+@keyframes yukari { from { transform: translateY(40%); opacity: .6; } }
+body.kilit { overflow: hidden; }

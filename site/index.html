@@ -76,20 +76,33 @@
         <p id="sayac" class="soluk"></p>
       </div>
       <div class="arac">
-        <label class="sr" for="ara">Fırsatlarda ara</label>
-        <input id="ara" class="alan" type="search" placeholder="Fırsatlarda ara" autocomplete="off" data-ara>
-        <label class="sr" for="magaza">Mağaza</label>
-        <select id="magaza" class="alan"><option value="">Tüm mağazalar</option></select>
-        <label class="sr" for="sirala">Sırala</label>
-        <select id="sirala" class="alan">
-          <option value="gercek">Gerçek düşüşe göre</option>
-          <option value="indirim">Mağaza indirimine göre</option>
-          <option value="yeni">En yeni</option>
-          <option value="ucuz">En düşük fiyat</option>
-        </select>
-        <label class="anahtar"><input id="sadece" type="checkbox"> Sadece gerçek indirimler</label>
+        <div class="arama-cubuk">
+          <label class="sr" for="ara">Fırsatlarda ara</label>
+          <input id="ara" class="alan" type="search" placeholder="Ürün veya marka ara" autocomplete="off" enterkeyhint="search" data-ara>
+          <button id="filtre-ac" class="dugme ikincil filtre-ac" type="button" aria-controls="filtre-panel" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span class="sr">Filtrele ve sırala</span><span id="filtre-sayi" class="filtre-sayi" hidden></span>
+          </button>
+        </div>
+        <div id="filtre-panel" class="filtre-panel" role="group" aria-label="Filtrele ve sırala">
+          <div class="panel-bas"><span class="tutamac" aria-hidden="true"></span><b>Filtrele ve sırala</b></div>
+          <label class="sr" for="magaza">Mağaza</label>
+          <select id="magaza" class="alan"><option value="">Tüm mağazalar</option></select>
+          <label class="sr" for="sirala">Sırala</label>
+          <select id="sirala" class="alan">
+            <option value="gercek">Gerçek düşüşe göre</option>
+            <option value="indirim">Mağaza indirimine göre</option>
+            <option value="yeni">En yeni</option>
+            <option value="ucuz">En düşük fiyat</option>
+          </select>
+          <label class="anahtar"><input id="sadece" type="checkbox"> Sadece gerçek indirimler</label>
+          <div class="panel-alt">
+            <button id="filtre-temizle" class="dugme ikincil" type="button">Temizle</button>
+            <button id="filtre-kapat" class="dugme" type="button">Sonuçları göster</button>
+          </div>
+        </div>
       </div>
     </div>
+    <div id="perde" class="perde" hidden></div>
     <div id="kategoriler" class="cipler" role="group" aria-label="Kategoriler"></div>
     <div id="ios" class="ipucu" hidden>Ana ekrana eklemek için Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>'ye dokunun.</div>
     <div id="liste" class="liste" aria-live="polite"></div>
@@ -149,6 +162,7 @@
 
 <dialog id="detay" class="detay" aria-labelledby="d-baslik">
   <div class="detay-ic">
+    <span class="tutamac detay-tutamac" aria-hidden="true"></span>
     <button class="kapat" type="button" aria-label="Kapat" data-kapat><svg width="22" height="22" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     <div class="detay-ust">
       <div class="gorsel buyuk-gorsel" data-gorsel></div>
