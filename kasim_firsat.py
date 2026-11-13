@@ -4233,6 +4233,35 @@ def katalog_komutu(a):
         print(f"  [{f['kod']}] {f['ad']} · {durum}" + (" · ortaklık linki" if f["ortaklik"] else ""))
 
 
+def kilit_bekcisi(depo, bekle=180, aralik=60):
+    """Teşhis: her dakika veri/nabiz.txt'ye zaman yazar; ana kilit `bekle` saniyeden uzun serbest kalmazsa
+    tüm iş parçacıklarının o anki satırlarını veri/takilma.log'a yazar (programın nerede takıldığını görmek için)."""
+    import traceback
+    nabiz = os.path.join(VERI_DIZINI, "nabiz.txt")
+    gunluk = os.path.join(VERI_DIZINI, "takilma.log")
+    while True:
+        time.sleep(aralik)
+        try:
+            with open(nabiz, "w", encoding="utf-8") as f:
+                f.write(simdi().isoformat() + "\n")
+        except OSError:
+            pass
+        if depo.kilit.acquire(timeout=bekle):
+            depo.kilit.release()
+            continue
+        try:
+            adlar = {t.ident: t.name for t in threading.enumerate()}
+            if os.path.exists(gunluk) and os.path.getsize(gunluk) > 2_000_000:
+                os.replace(gunluk, gunluk + ".eski")
+            with open(gunluk, "a", encoding="utf-8") as f:
+                f.write(f"\n=== {simdi().isoformat()} · ana kilit {bekle} sn'dir serbest değil (sürüm {SURUM}) ===\n")
+                for tid, cerceve in sys._current_frames().items():
+                    f.write(f"--- {adlar.get(tid, tid)}\n" + "".join(traceback.format_stack(cerceve)))
+        except OSError:
+            pass
+        time.sleep(600)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Kasım Fırsatları — telefonda çalışan indirim takipçisi")
     ap.add_argument("--port", type=int, default=VARSAYILAN_PORT, help="yerel sayfanın portu (varsayılan 8765)")
@@ -4317,16 +4346,17 @@ def main():
         Isleyici.anahtar = erisim_anahtari()
         ip = yerel_ag_adresi()
         Isleyici.ag_adresi = f"http://{ip}:{a.port}/?k={Isleyici.anahtar}" if ip else None
-    threading.Thread(target=depo.dongu, daemon=True).start()
-    threading.Thread(target=depo.dogrulayici_dongu, daemon=True).start()   # Aşama 2: doğrulayıcı
+    threading.Thread(target=depo.dongu, daemon=True, name="okuyucu").start()
+    threading.Thread(target=kilit_bekcisi, args=(depo,), daemon=True, name="bekci").start()      # teşhis
+    threading.Thread(target=depo.dogrulayici_dongu, daemon=True, name="dogrulayici").start()   # Aşama 2: doğrulayıcı
     fl = katalog_olustur(depo)
     if fl:
-        threading.Thread(target=fl.dongu, kwargs={"bildir": depo.feed_bildir}, daemon=True).start()   # ürün kataloğu
+        threading.Thread(target=fl.dongu, kwargs={"bildir": depo.feed_bildir}, daemon=True, name="katalog").start()   # ürün kataloğu
         if fl.ayar["feedler"]:
             print(f"Ürün kataloğu: {len(fl.ayar['feedler'])} feed · {fl.ayar['aralik_saat']} saatte bir güncellenir")
     yy = yayinci_olustur(depo)
     if yy and yy.hazir():
-        threading.Thread(target=yy.dongu, daemon=True).start()               # Aşama 3: herkese açık site
+        threading.Thread(target=yy.dongu, daemon=True, name="yayinci").start()               # Aşama 3: herkese açık site
         print(f"Herkese açık site: {yy.ozet()['adres']} (10 dakikada bir güncellenir)")
     print(f"Kasım Fırsatları {SURUM} çalışıyor → {url}")
     print(f"Mağaza okuma: {' → '.join(motor_ozeti())}" + ("" if _cffi else
