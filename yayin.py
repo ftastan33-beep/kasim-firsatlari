@@ -30,6 +30,7 @@ TAZE_SN = 6 * 3600               # mağazadaki teyidi bundan eski ürün yayınd
 EN_FAZLA_URUN = 150
 EN_DUSUK_INDIRIM = 10            # %10'dan az indirim "fırsat" sayılmaz (dip fiyat / Akakçe en ucuzu hariç)
 TELEGRAM_TUR_BASINA = 8
+TELEGRAM_ILK_TUR = 5          # ilk açılışta kanala gönderilecek en iyi fırsat sayısı
 VARSAYILAN = {
     "site_adi": "Teyitli Fırsat",
     "slogan": "Fiyatı mağazada teyit edilmiş indirimler",
@@ -84,6 +85,16 @@ def ortaklik_linki(url, magaza, ayar):
 # ---------------------------------------------------------------------------
 # Seçim
 # ---------------------------------------------------------------------------
+def _magaza_linki_mi(url):
+    """Link bilinen bir mağazanın kendi alan adına mı gidiyor? (kısaltılmış mağaza linkleri dahil)"""
+    import sys
+    for ad in ("__main__", "kasim_firsat"):
+        m = sys.modules.get(ad)
+        if m is not None and hasattr(m, "magaza_alani"):
+            return bool(m.magaza_alani(url))
+    return True
+
+
 def kisa_id(metin):
     return hashlib.sha1(metin.encode("utf-8")).hexdigest()[:12]
 
@@ -101,6 +112,8 @@ def yayin_listesi(firsatlar, ayar, an=None):
         kaynak_link = dg.get("son_url") or d.get("urun_link")
         if not kaynak_link or not kaynak_link.startswith("http"):
             continue
+        if not _magaza_linki_mi(kaynak_link):
+            continue                                 # aracı site (Onual vb.): ziyaretçi mağazaya gitmeli
         fiyat = dg.get("fiyat") or d.get("fiyat")
         if not fiyat:
             continue
@@ -370,11 +383,15 @@ class Yayinci:
             del gon[k]
         yeni = [o for o in sorted(liste, key=lambda o: o["ilk"]) if o["id"] not in gon][:TELEGRAM_TUR_BASINA]
         if not self.durum.get("telegram_basladi"):
-            # İlk çalıştırmada eldeki tüm liste kanala dökülmesin: mevcutlar "gönderildi" sayılır
+            # İlk çalıştırmada tüm liste kanala dökülmesin: yalnızca en iyi birkaç fırsat paylaşılır,
+            # kalanlar "gönderildi" sayılır. Sonraki turlarda sadece yeni fırsatlar gider.
+            en_iyi = sorted(liste, key=lambda o: (-(o.get("yuzde") or 0), -o["teyit"]))[:TELEGRAM_ILK_TUR]
+            secili = {o["id"] for o in en_iyi}
             for o in liste:
-                gon[o["id"]] = an
+                if o["id"] not in secili:
+                    gon[o["id"]] = an
             self.durum["telegram_basladi"] = True
-            return
+            yeni = en_iyi
         for o in yeni:
             try:
                 if telegram_gonder(tg, o, self.ayar["site_adi"]):
