@@ -88,6 +88,60 @@ class Secim(unittest.TestCase):
         self.assertEqual(l[0]["fiyat"], 5799)
 
 
+class Karar(unittest.TestCase):
+    """Fiyat geçmişine göre indirim değerlendirmesi."""
+    def gecmis(self, fiyatlar, gun_once=60):
+        an = time.time()
+        adim = gun_once * 86400 / max(1, len(fiyatlar) - 1)
+        return [[int(an - gun_once * 86400 + i * adim) - 3600, f] for i, f in enumerate(fiyatlar)]
+
+    def test_donemin_en_dusugu(self):
+        k = yayin.fiyat_karari(1299, 2499, self.gecmis([1899, 1949, 1899, 1849, 1999, 1799]))
+        self.assertEqual(k["karar"], "dip")
+        self.assertEqual(k["normal"], 1899)
+        self.assertEqual(k["gercek_yuzde"], 32)
+        self.assertIn("günün en düşük", k["etiket"])
+
+    def test_normalin_altinda(self):
+        k = yayin.fiyat_karari(7999, 14999, self.gecmis([8999, 8799, 7499, 8899, 8999, 8799]))
+        self.assertEqual(k["karar"], "iyi")
+
+    def test_sisirilmis(self):
+        k = yayin.fiyat_karari(3999, 7999, self.gecmis([3899, 3999, 3949, 3999, 3899, 3949]))
+        self.assertEqual(k["karar"], "sisirilmis")
+        self.assertLessEqual(k["gercek_yuzde"], 0)
+
+    def test_hep_ayni_fiyat_dip_sayilmaz(self):
+        k = yayin.fiyat_karari(500, 800, self.gecmis([500, 500, 500, 500]))
+        self.assertEqual(k["karar"], "sisirilmis")
+
+    def test_gecmis_yetersiz(self):
+        k = yayin.fiyat_karari(500, 800, self.gecmis([700]))
+        self.assertIsNone(k["karar"])
+        k = yayin.fiyat_karari(500, 800, [], eski_supheli=True)
+        self.assertEqual(k["karar"], "sisirilmis")
+
+    def test_eski_kayitlar_ve_seyreltme(self):
+        an = time.time()
+        cok_eski = [[int(an - 200 * 86400), 100]]
+        k = yayin.fiyat_karari(50, None, cok_eski + self.gecmis(list(range(200, 280)), 80), an)
+        self.assertLessEqual(len(k["gecmis"]), yayin.GECMIS_NOKTA)
+        self.assertNotIn(100, [p for _, p in k["gecmis"]])          # 90 günden eski kayıt alınmaz
+        self.assertEqual(k["gecmis"][-1][1], 279)                    # en yeni kayıt korunur
+
+    def test_listeye_yazilir(self):
+        d = ornek(fiyat_gecmisi=self.gecmis([7999, 7899, 7999, 7499, 7999]), kategori="beyaz", kategori_ad="Beyaz eşya & ev aletleri")
+        o = yayin.yayin_listesi([d], {})[0]
+        self.assertEqual(o["karar"], "dip")
+        self.assertEqual(o["kategori_ad"], "Beyaz eşya & ev aletleri")
+        self.assertTrue(o["gecmis"])
+
+    def test_eski_varsayilan_ad_duseroya_gecer(self):
+        a = yayin.eski_varsayilani_guncelle({"site_adi": "Teyitli Fırsat", "slogan": "Fiyatı mağazada teyit edilmiş indirimler"})
+        self.assertEqual(a["site_adi"], "Düşero")
+        self.assertEqual(yayin.eski_varsayilani_guncelle({"site_adi": "Benim Sitem"})["site_adi"], "Benim Sitem")
+
+
 class Site(unittest.TestCase):
     def test_dosyalar_ve_yer_tutucular(self):
         ayar = dict(yayin.VARSAYILAN, telegram={"kanal": "@teyitli", "bot_token": ""}, iletisim="info@ornek.com")
@@ -97,7 +151,7 @@ class Site(unittest.TestCase):
         for yol, icerik in d.items():
             if yol.endswith((".html", ".js", ".css", ".webmanifest")):
                 self.assertNotIn(b"{{", icerik, yol)
-        self.assertIn("Teyitli Fırsat".encode(), d["index.html"])
+        self.assertIn("Düşero".encode(), d["index.html"])
         self.assertIn(b"t.me/teyitli", d["index.html"])
         self.assertIn(b"mailto:info@ornek.com", d["yasal.html"])
         self.assertEqual(len(json.loads(d["veri.json"])["urunler"]), 1)

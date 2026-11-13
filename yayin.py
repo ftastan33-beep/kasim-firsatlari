@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Kasım Fırsatları — herkese açık site yayıncısı (Teyitli Fırsat).
+"""Kasım Fırsatları — herkese açık site yayıncısı (Düşero).
 
 Bilgisayardaki program mağazada doğruladığı fırsatları buradan herkese açık siteye gönderir:
   1. Seçim     : yalnızca mağazada fiyatı teyit edilmiş, gerçekten indirimli, taze ürünler
@@ -7,6 +7,10 @@ Bilgisayardaki program mağazada doğruladığı fırsatları buradan herkese a�
   3. Site      : site/ klasöründeki şablon + veri.json üretilir
   4. Yükleme   : GitHub deposuna TEK commit (Git Data API); GitHub Pages siteyi yayınlar
   5. Telegram  : (isteğe bağlı) yeni fırsatlar kanala gönderilir
+
+Her ürün için programın kaydettiği fiyat geçmişine bakılır ve indirim değerlendirilir
+(fiyat_karari): "dip" = dönemin en düşüğü, "iyi" = normal fiyatın altında, "sisirilmis" = üstü çizili
+fiyat var ama ürün zaten çoğunlukla bu fiyata satılıyor. Geçmiş azsa karar verilmez.
 
 Kanal paylaşımlarının metni, kanal adı ve görselleri siteye KONMAZ: kart mağaza verisinden ve kendi
 metnimizle oluşturulur. Yalnızca Python standart kütüphanesi kullanılır.
@@ -32,9 +36,11 @@ EN_DUSUK_INDIRIM = 10            # %10'dan az indirim "fırsat" sayılmaz (dip f
 KATALOG_PARCA = 1500             # herkese açık katalog bu büyüklükte dosyalara bölünür
 BUYUK_DOSYA = 200 * 1024         # bundan büyük dosyalar GitHub'a ayrı (blob) yüklenir
 TELEGRAM_TUR_BASINA = 8
+GECMIS_PENCERE_GUN = 90          # indirim değerlendirmesinde bakılan dönem
+GECMIS_NOKTA = 30                # sitede grafik için gönderilen en fazla geçmiş kaydı
 VARSAYILAN = {
-    "site_adi": "Teyitli Fırsat",
-    "slogan": "Fiyatı mağazada teyit edilmiş indirimler",
+    "site_adi": "Düşero",
+    "slogan": "Gerçekten düşen fiyatlar",
     "github": {"depo": "", "token": "", "dal": "main"},
     "iletisim": "",               # yasal sayfada görünen e-posta (içerik kaldırma talepleri için)
     "alan_adi": "",               # özel alan adı (ör. teyitlifirsat.com); boşsa github.io adresi
@@ -52,6 +58,15 @@ IZLEME_PARAMLARI = re.compile(
     r"adjust_.*|adj_.*|wt_.*|sc_.*|campaign.*|cmp.*|boutiqueid|linkcode|creative.*|camp|psc|th|smid|social_share|"
     r"sr|qid|sprefix|crid|keywords|dib.*|content-id|pd_rd_.*|pf_rd_.*|channel|source|medium|share.*|kid|kupon)$", re.I)
 SAKLANAN_PARAMLAR = {"trendyol": {"merchantid"}, "hepsiburada": {"magaza"}}
+# Eski sürümün varsayılan adı/sloganı kayıtlı ayarlarda kaldıysa Düşero'ya geçilir (elle yazılmış ad korunur)
+ESKI_VARSAYILAN = {"site_adi": "Teyitli Fırsat", "slogan": "Fiyatı mağazada teyit edilmiş indirimler"}
+
+
+def eski_varsayilani_guncelle(ayar):
+    for k, eski in ESKI_VARSAYILAN.items():
+        if ayar.get(k) == eski:
+            ayar[k] = VARSAYILAN[k]
+    return ayar
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +104,56 @@ def ortaklik_linki(url, magaza, ayar):
 # ---------------------------------------------------------------------------
 # Seçim
 # ---------------------------------------------------------------------------
+def _ortanca(degerler):
+    s_ = sorted(degerler)
+    m = len(s_) // 2
+    return s_[m] if len(s_) % 2 else (s_[m - 1] + s_[m]) / 2
+
+
+def fiyat_karari(fiyat, eski_fiyat, gecmis, an=None, eski_supheli=False):
+    """Fiyatı programın kaydettiği geçmişle karşılaştırır.
+
+    gecmis: [[ts, fiyat], ...] (şimdiki fiyat hariç). Dönen sözlük:
+      karar        : "dip" | "iyi" | "sisirilmis" | None (geçmiş yetersiz)
+      etiket       : kartta yazacak kısa açıklama
+      normal       : dönemde çoğunlukla görülen fiyat (ortanca; 3+ kayıtta)
+      gercek_yuzde : normal fiyata göre gerçek düşüş (%)
+      en_dusuk/en_yuksek/gun : dönem özeti
+      gecmis       : grafik için sadeleştirilmiş kayıtlar
+    """
+    an = an or time.time()
+    bas = an - GECMIS_PENCERE_GUN * 86400
+    h = sorted((int(t), float(p)) for t, p, *_ in (gecmis or []) if p and p > 0 and bas <= t <= an)
+    sonuc = {"karar": None, "etiket": None, "normal": None, "gercek_yuzde": None,
+             "en_dusuk": None, "en_yuksek": None, "gun": None, "gecmis": []}
+    if h:
+        adim = max(1, -(-len(h) // GECMIS_NOKTA))
+        secilen = h[::-1][::adim][::-1]                     # en yeni kayıt her zaman kalsın
+        sonuc["gecmis"] = [[t, round(p, 2)] for t, p in secilen]
+    if not fiyat or len(h) < 2:
+        if eski_fiyat and eski_supheli:
+            sonuc.update(karar="sisirilmis", etiket="Üstü çizili fiyat kayıtlarda hiç görülmedi")
+        return sonuc
+    fiyatlar = [p for _, p in h]
+    gun = max(1, round((an - h[0][0]) / 86400))
+    lo, hi = min(fiyatlar), max(fiyatlar)
+    sonuc.update(en_dusuk=lo, en_yuksek=hi, gun=gun)
+    normal = _ortanca(fiyatlar) if len(h) >= 3 else None
+    if normal:
+        sonuc.update(normal=round(normal, 2), gercek_yuzde=int(round((normal - fiyat) / normal * 100)))
+    # Fiyat hep aynıysa "en düşük" sayılmaz: gerçekten düşmüş olmalı (ortancanın / en yükseğin %3 altı)
+    referans = normal or hi
+    if gun >= 7 and fiyat <= lo * 1.001 and fiyat <= referans * 0.97:
+        sonuc.update(karar="dip", etiket=f"Son {gun} günün en düşük fiyatı")
+    elif normal and sonuc["gercek_yuzde"] >= 5:
+        sonuc.update(karar="iyi", etiket=f"Normal fiyatın %{sonuc['gercek_yuzde']} altında")
+    elif normal and eski_fiyat:
+        sonuc.update(karar="sisirilmis", etiket=f"Son {gun} günde çoğunlukla {_tl(normal)}")
+    elif eski_fiyat and eski_supheli:
+        sonuc.update(karar="sisirilmis", etiket="Üstü çizili fiyat kayıtlarda hiç görülmedi")
+    return sonuc
+
+
 def kisa_id(metin):
     return hashlib.sha1(metin.encode("utf-8")).hexdigest()[:12]
 
@@ -127,13 +192,17 @@ def yayin_listesi(firsatlar, ayar, an=None):
         if len(baslik) < 6:
             continue
         anahtar = link_temizle(kaynak_link, d.get("magaza"))
+        kr = fiyat_karari(fiyat, eski, d.get("fiyat_gecmisi"), an, bool(d.get("eski_fiyat_supheli")))
+        resim = next((r for r in (dg.get("resim"), d.get("resim")) if (r or "").startswith("https://")), None)
         oge = {
             "id": kisa_id(anahtar), "baslik": baslik[:140], "magaza": d.get("magaza") or "diger",
             "magaza_ad": d.get("magaza_ad") or "Mağaza", "fiyat": round(fiyat, 2), "eski_fiyat": eski, "yuzde": yuzde,
-            "resim": d.get("resim") if (d.get("resim") or "").startswith("https://") else None,
+            "resim": resim,
             "link": link, "ortaklik": ortak, "teyit": int(dg["ts"]),
             "kosul": (dg.get("neden") if dg["durum"] == "kosullu" else None),
             "dip": dip, "akakce": akk, "ilk": int(d.get("ts") or dg["ts"]),
+            "kategori": d.get("kategori") or "diger", "kategori_ad": d.get("kategori_ad") or "Diğer",
+            **kr,
         }
         eski_oge = secilen.get(anahtar)
         if not eski_oge or oge["fiyat"] < eski_oge["fiyat"] or \
@@ -296,7 +365,9 @@ def telegram_metni(o, site_adi):
         fiyat += f"  <s>{_tl(o['eski_fiyat'])}</s>  (%{o['yuzde']} indirim)"
     satirlar.append(fiyat)
     satirlar.append(f"🏬 {html.escape(o['magaza_ad'])} · ✔ {time.strftime('%H:%M', time.localtime(o['teyit']))} itibarıyla mağazada teyit edildi")
-    if o.get("dip"):
+    if o.get("karar") in ("dip", "iyi"):
+        satirlar.append(f"📉 {'Gerçek indirim' if o['karar'] == 'dip' else 'İyi fiyat'} · {html.escape(o['etiket'])}")
+    elif o.get("dip"):
         satirlar.append(f"📉 {html.escape(o['dip'])}")
     if o.get("akakce"):
         satirlar.append("⚖️ Akakçe'deki en ucuz fiyat seviyesinde" if o["akakce"]["fark"] <= 1 else
@@ -335,6 +406,7 @@ class Yayinci:
         self.ayar = self._oku(self.ayar_yolu, {})
         for k, v in VARSAYILAN.items():
             self.ayar.setdefault(k, json.loads(json.dumps(v)))
+        eski_varsayilani_guncelle(self.ayar)
         self.durum = self._oku(self.durum_yolu, {"hashler": {}, "ozet": None, "son": 0, "gonderilen": {}})
         self.son_hata, self.son_sayi = None, 0
         self.tetik = threading.Event()
@@ -428,7 +500,9 @@ class Yayinci:
         an = time.time()
         for k in [k for k, t in gon.items() if an - t > 7 * 86400]:
             del gon[k]
-        yeni = [o for o in sorted(liste, key=lambda o: o["ilk"]) if o["id"] not in gon][:TELEGRAM_TUR_BASINA]
+        # Kanal yalnızca gerçek düşüşleri paylaşır: şişirilmiş indirimler sitede etiketli durur, kanala gitmez
+        yeni = [o for o in sorted(liste, key=lambda o: o["ilk"])
+                if o["id"] not in gon and o.get("karar") != "sisirilmis"][:TELEGRAM_TUR_BASINA]
         if not self.durum.get("telegram_basladi"):
             # İlk çalıştırmada eldeki tüm liste kanala dökülmesin: mevcutlar "gönderildi" sayılır
             for o in liste:
@@ -482,6 +556,7 @@ def kurulum_sihirbazi(veri_dizini):
     ayar = Yayinci._oku(yol, {})
     for k, v in VARSAYILAN.items():
         ayar.setdefault(k, json.loads(json.dumps(v)))
+    eski_varsayilani_guncelle(ayar)
 
     def sor(soru, mevcut="", gizli=False):
         ipucu = f" [{'(kayıtlı)' if gizli and mevcut else mevcut}]" if mevcut else ""
@@ -490,13 +565,13 @@ def kurulum_sihirbazi(veri_dizini):
 
     print("\n=== Herkese açık site kurulumu ===  (boş bırakırsanız köşeli parantezdeki değer kalır)\n")
     ayar["site_adi"] = sor("Site adı", ayar["site_adi"])
-    ayar["github"]["depo"] = sor("GitHub deposu (kullanıcı/depo, ör. ftastan33-beep/teyitli-firsat)", ayar["github"]["depo"])
+    ayar["github"]["depo"] = sor("GitHub deposu (kullanıcı/depo, ör. kullaniciadi/teyitli-firsat)", ayar["github"]["depo"])
     ayar["github"]["token"] = sor("GitHub anahtarı (yapıştırın, ekranda görünmez)", ayar["github"]["token"], gizli=True)
     ayar["iletisim"] = sor("Sitede görünecek iletişim e-postası", ayar.get("iletisim", ""))
     ayar["alan_adi"] = sor("Özel alan adı (yoksa boş geçin)", ayar.get("alan_adi", ""))
     if input("Telegram kanalına da otomatik paylaşılsın mı? (e/h) [h]: ").strip().lower().startswith("e"):
         ayar["telegram"]["bot_token"] = sor("Telegram bot anahtarı (BotFather'dan)", ayar["telegram"]["bot_token"], gizli=True)
-        ayar["telegram"]["kanal"] = sor("Kanal kullanıcı adı (ör. @teyitlifirsat)", ayar["telegram"]["kanal"])
+        ayar["telegram"]["kanal"] = sor("Kanal kullanıcı adı (ör. @dusero)", ayar["telegram"]["kanal"])
     print("\nGitHub bağlantısı deneniyor...")
     try:
         d = _gh(ayar["github"]["token"], "GET", f"/repos/{ayar['github']['depo']}")

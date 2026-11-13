@@ -2,35 +2,54 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Yasal bilgiler · {{SITE_ADI}}</title>
-<meta name="theme-color" content="#123d2f">
+<meta name="theme-color" content="#C2380A">
 <link rel="icon" href="ikon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="stil.css?v={{SURUM}}">
 </head>
 <body>
+<header class="ust">
+  <div class="kap ust-ic">
+    <a class="marka" href="./" aria-label="{{SITE_ADI}} ana sayfa">
+      <svg class="logo" width="34" height="34" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#C2380A"/><path d="M112 168 222 278l64-64 116 116M402 222v108H294" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="marka-ad">{{SITE_ADI}}</span>
+    </a>
+    <a class="dugme ikincil" href="./">Fırsatlara dön</a>
+  </div>
+</header>
 <main class="kap yasal">
-  <p><a href="./">← {{SITE_ADI}}</a></p>
   <h1>Yasal bilgiler</h1>
 
   <h2>Hizmetin niteliği</h2>
   <p>{{SITE_ADI}}, internetteki mağazalarda yayınlanan indirimleri bir araya getiren bilgilendirme amaçlı bir listedir. Satış yapmaz, sipariş almaz, ödeme kabul etmez. Ürünlerin satıcısı ilgili mağaza ya da pazar yerindeki satıcıdır; sipariş, teslimat, iade ve garanti konularında o satıcının koşulları geçerlidir.</p>
 
   <h2>Fiyat ve stok bilgisi</h2>
-  <p>Listedeki her ürünün fiyatı ve stoğu, kartta yazan saatte mağaza sayfasında otomatik olarak kontrol edilmiştir. Mağazalar fiyatları her an değiştirebilir; sepette ya da kodla oluşan indirimler kişiye ve saate göre farklılık gösterebilir. Satın almadan önce güncel fiyatı mağaza sayfasında kontrol edin. Gösterilen indirim oranları mağazanın sayfada belirttiği önceki fiyata ya da fiyat geçmişine göre hesaplanır.</p>
+  <p>Listedeki her ürünün fiyatı ve stoğu, kartta yazan saatte mağaza sayfasında otomatik olarak kontrol edilmiştir. Mağazalar fiyatları her an değiştirebilir; sepette ya da kodla oluşan indirimler kişiye ve saate göre farklılık gösterebilir. Satın almadan önce güncel fiyatı mağaza sayfasında kontrol edin.</p>
+
+  <h2>İndirim değerlendirmesi nasıl yapılır?</h2>
+  <p>Kartlarda iki oran yer alabilir. <b>Mağazanın gösterdiği oran</b>, mağaza sayfasındaki üstü çizili fiyata göre hesaplanır. <b>Gerçek düşüş</b> ise ürünün son 90 gün içinde kaydettiğimiz fiyatlarının ortancasına (ürünün bu dönemde çoğunlukla satıldığı fiyata) göre hesaplanır.</p>
+  <ul>
+    <li><b>Gerçek indirim:</b> fiyat, kayıtlı dönemin en düşük fiyatıdır ve normal fiyatın belirgin şekilde altındadır.</li>
+    <li><b>İyi fiyat:</b> fiyat, normal fiyatın en az %5 altındadır.</li>
+    <li><b>Şişirilmiş indirim:</b> sayfada indirim gösterilmektedir ancak fiyat, kayıtlarımıza göre ürünün normalde satıldığı seviyededir ya da üstü çizili fiyat kayıtlarımızda hiç görülmemiştir.</li>
+    <li><b>Geçmiş az:</b> değerlendirme için yeterli fiyat kaydı henüz yoktur.</li>
+  </ul>
+  <p>Bu değerlendirmeler yalnızca bizim kaydettiğimiz fiyatlara dayanan otomatik bir karşılaştırmadır; kayıtlar eksik olabilir. Herhangi bir mağaza ya da satıcı hakkında hukuki bir tespit veya suçlama niteliği taşımaz.</p>
 
   <h2>Satış ortaklığı bağlantıları</h2>
-  <p>Sitedeki ve Telegram kanalımızdaki bazı bağlantılar satış ortaklığı (affiliate) bağlantısı olabilir. Bu bağlantılar üzerinden yapılan alışverişlerden {{SITE_ADI}} mağazadan komisyon alabilir. Bu durum ödediğiniz fiyatı değiştirmez ve hangi ürünün listeleneceğini etkilemez.</p>
+  <p>Sitedeki ve Telegram kanalımızdaki bazı bağlantılar satış ortaklığı (affiliate) bağlantısıdır ve reklam niteliği taşır. Bu bağlantılar üzerinden yapılan alışverişlerden {{SITE_ADI}} mağazadan komisyon alabilir. Bu durum ödediğiniz fiyatı değiştirmez ve hangi ürünün listeleneceğini ya da nasıl değerlendirileceğini etkilemez.</p>
 
-  <h2>Kişisel veriler ve çerezler</h2>
-  <p>Sitede üyelik, form, çerez, reklam ya da ziyaretçi takip aracı kullanılmaz. Tercihleriniz (sıralama seçimi, son ziyaret zamanı) yalnızca kendi cihazınızın tarayıcı belleğinde tutulur ve bize iletilmez. Site GitHub Pages üzerinde barındırılır; barındırma hizmeti teknik kayıtlar (ör. IP adresi) tutabilir. Bir mağaza bağlantısına tıkladığınızda o mağazanın gizlilik ve çerez politikası geçerli olur.</p>
+  <h2 id="kvkk">Kişisel veriler ve çerezler</h2>
+  <p>Sitede üyelik, form, çerez, reklam ya da ziyaretçi takip aracı kullanılmaz. Tercihleriniz (sıralama seçimi, filtre, son ziyaret zamanı) yalnızca kendi cihazınızın tarayıcı belleğinde tutulur ve bize iletilmez. Site GitHub Pages üzerinde barındırılır; barındırma hizmeti teknik kayıtlar (ör. IP adresi) tutabilir. Bir mağaza bağlantısına tıkladığınızda o mağazanın gizlilik ve çerez politikası geçerli olur.</p>
 
   <h2>Marka ve görseller</h2>
-  <p>Ürün adları, görseller ve markalar ilgili sahiplerine aittir ve yalnızca ürünü tanıtmak amacıyla mağaza sayfasından alınarak gösterilir. Hak sahibi olarak bir içeriğin kaldırılmasını istiyorsanız aşağıdaki adresten bize ulaşın; talep incelenerek gecikmeksizin işlem yapılır.</p>
+  <p>Ürün adları, görseller ve markalar ilgili sahiplerine aittir ve yalnızca ürünü tanıtmak amacıyla gösterilir. Hak sahibi olarak bir içeriğin kaldırılmasını istiyorsanız aşağıdaki adresten bize ulaşın; talep incelenerek gecikmeksizin işlem yapılır.</p>
 
-  <h2>İletişim</h2>
-  <p id="iletisim">{{ILETISIM}}</p>
+  <h2 id="iletisim">İletişim</h2>
+  <p>{{ILETISIM}}</p>
   <p><a href="./">← Fırsatlara dön</a></p>
 </main>
+<footer class="alt"><p class="kap telif">© {{YIL}} {{SITE_ADI}}</p></footer>
 </body>
 </html>

@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{SITE_ADI}} · {{SLOGAN}}</title>
-<meta name="description" content="{{SITE_ADI}}: {{SLOGAN}}. Her fırsatın fiyatı ve stoğu mağaza sayfasında kontrol edilir; tükenen ya da fiyatı yükselen ürün listeden çıkar.">
-<meta name="theme-color" content="#123d2f">
-<meta property="og:title" content="{{SITE_ADI}}">
-<meta property="og:description" content="{{SLOGAN}}">
+<meta name="description" content="{{SITE_ADI}}: {{SLOGAN}}. Her indirim ürünün son 90 günlük fiyatıyla karşılaştırılır; şişirilmiş etiketler ayıklanır, fiyat ve stok mağazada kontrol edilir.">
+<meta name="theme-color" content="#C2380A">
+<meta property="og:title" content="{{SITE_ADI}} · Fiyat gerçekten düştü mü?">
+<meta property="og:description" content="{{SLOGAN}}. İndirimler fiyat geçmişiyle karşılaştırılır.">
 <meta property="og:image" content="ikon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="ikon.svg" type="image/svg+xml">
@@ -18,65 +18,175 @@
 <header class="ust">
   <div class="kap ust-ic">
     <a class="marka" href="./" aria-label="{{SITE_ADI}} ana sayfa">
-      <img src="ikon.svg" alt="" width="34" height="34">
-      <span><b>{{SITE_ADI}}</b><small>{{SLOGAN}}</small></span>
+      <svg class="logo" width="34" height="34" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#C2380A"/><path d="M112 168 222 278l64-64 116 116M402 222v108H294" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="marka-ad">{{SITE_ADI}}</span>
     </a>
-    <div class="ust-dugmeler">
-      <a id="tg" class="dugme ikincil" hidden target="_blank" rel="noopener" href="https://t.me/{{TELEGRAM}}">Telegram</a>
-      <button id="yukle" class="dugme" hidden>Uygulamayı yükle</button>
-    </div>
+    <nav class="menu" aria-label="Ana menü">
+      <a href="#firsatlar" class="menu-link">Fırsatlar</a>
+      <a href="#nasil" class="menu-link">Nasıl çalışır?</a>
+      <button id="yukle" class="dugme ikincil" type="button" aria-label="Uygulamayı yükle" hidden><svg width="18" height="18" viewBox="0 0 24 24" class="ico" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 7v7m0 0-3-3m3 3 3-3"/></svg><span class="m-gizle">Uygulamayı yükle</span></button>
+      <a id="tg" class="dugme" hidden target="_blank" rel="noopener" href="https://t.me/{{TELEGRAM}}">
+        <svg width="18" height="18" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M21 4 3 11l6 2 2 6 3-4 5 4 2-15z"/><path d="m9 13 8-6"/></svg>Telegram</a>
+    </nav>
   </div>
 </header>
 
-<main class="kap">
-  <section class="giris">
-    <h1>Bugünün <em>gerçek</em> indirimleri</h1>
-    <p>Her ürünün fiyatı ve stoğu mağaza sayfasında tek tek kontrol edilir. Tükenen ya da fiyatı yükselen ürün listeden kendiliğinden çıkar.</p>
-    <p id="durum" class="durum" role="status">Fırsatlar yükleniyor…</p>
+<main>
+  <section class="kahraman">
+    <div class="kap kahraman-ic">
+      <div class="kahraman-metin">
+        <span class="etiket-ust">Etikete değil, fiyat geçmişine bak</span>
+        <h1>Fiyat gerçekten düştü mü?<br><span>{{SITE_ADI}} söyler.</span></h1>
+        <p class="giris-p">Mağazalardaki fiyatları sürekli izliyoruz. Her indirimi ürünün son 90 günde kaydedilen fiyatlarıyla karşılaştırıyor, şişirilmiş etiketleri ayıklıyor, gerçek düşüşleri öne çıkarıyoruz.</p>
+        <form class="ara-kutu" role="search" id="ara-form">
+          <label class="sr" for="ara-ust">Ürün ara</label>
+          <input id="ara-ust" class="alan buyuk" type="search" placeholder="Ürün, marka ya da model ara…" autocomplete="off" data-ara>
+          <button class="dugme buyuk" type="submit">Ara</button>
+        </form>
+        <ul class="ozellikler">
+          <li><svg width="20" height="20" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Fiyat geçmişi</li>
+          <li><svg width="20" height="20" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="m9 12 2 2 4-4"/></svg>Gerçek indirim kontrolü</li>
+          <li><svg width="20" height="20" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Mağazada teyitli fiyat</li>
+        </ul>
+        <p id="durum" class="durum" role="status">Fırsatlar yükleniyor…</p>
+      </div>
+
+      <aside id="one" class="one" hidden aria-labelledby="one-baslik">
+        <div class="one-ust"><span class="ust-yazi">Günün düşüşü</span><span class="rozet" data-karar></span></div>
+        <div>
+          <div class="soluk kucuk" data-magaza></div>
+          <h2 id="one-baslik" class="one-baslik" data-baslik></h2>
+        </div>
+        <div class="fiyat-satir"><span class="fiyat dev" data-fiyat></span><s class="eski" data-eski></s></div>
+        <div class="grafik-kutu" data-grafik></div>
+        <div class="kutucuklar">
+          <div class="kutucuk"><span>Mağazanın dediği</span><b data-magaza-oran></b></div>
+          <div class="kutucuk mavi"><span>Gerçek düşüş</span><b data-gercek></b></div>
+          <div class="kutucuk"><span>Normal fiyat</span><b data-normal></b></div>
+        </div>
+        <button class="dugme ikincil tam" type="button" data-detay>Fiyat geçmişini incele</button>
+      </aside>
+    </div>
   </section>
 
-  <div class="arac" role="search">
-    <input id="ara" type="search" placeholder="Ürün ara (ör. airfryer, kulaklık)" aria-label="Ürün ara" autocomplete="off">
-    <select id="sirala" aria-label="Sıralama">
-      <option value="yeni">En yeni</option>
-      <option value="indirim">En yüksek indirim</option>
-      <option value="ucuz">En düşük fiyat</option>
-    </select>
-  </div>
-  <div id="magazalar" class="cipler" aria-label="Mağaza filtresi"></div>
+  <section id="firsatlar" class="kap bolum">
+    <div class="bolum-bas">
+      <div>
+        <h2 class="bolum-baslik">Son düşenler</h2>
+        <p id="sayac" class="soluk"></p>
+      </div>
+      <div class="arac">
+        <label class="sr" for="ara">Fırsatlarda ara</label>
+        <input id="ara" class="alan" type="search" placeholder="Fırsatlarda ara" autocomplete="off" data-ara>
+        <label class="sr" for="magaza">Mağaza</label>
+        <select id="magaza" class="alan"><option value="">Tüm mağazalar</option></select>
+        <label class="sr" for="sirala">Sırala</label>
+        <select id="sirala" class="alan">
+          <option value="gercek">Gerçek düşüşe göre</option>
+          <option value="indirim">Mağaza indirimine göre</option>
+          <option value="yeni">En yeni</option>
+          <option value="ucuz">En düşük fiyat</option>
+        </select>
+        <label class="anahtar"><input id="sadece" type="checkbox"> Sadece gerçek indirimler</label>
+      </div>
+    </div>
+    <div id="kategoriler" class="cipler" role="group" aria-label="Kategoriler"></div>
+    <div id="ios" class="ipucu" hidden>Ana ekrana eklemek için Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>'ye dokunun.</div>
+    <div id="liste" class="liste" aria-live="polite"></div>
+    <div id="bos" class="bos" hidden>
+      <b>Bu filtrelerle fırsat yok</b>
+      <span>Aramayı değiştir ya da “Sadece gerçek indirimler” seçimini kaldır.</span>
+    </div>
 
-  <div id="ios" class="ipucu" hidden>Ana ekrana eklemek için Safari'de <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>'ye dokunun.</div>
-  <section id="liste" class="liste" aria-live="polite"></section>
-  <p id="bos" class="bos" hidden>Bu filtreye uyan fırsat yok. Filtreyi temizleyin ya da biraz sonra tekrar bakın.</p>
+    <section id="katalog-bolum" class="katalog-bolum" hidden aria-live="polite">
+      <h3 id="katalog-baslik" class="katalog-baslik">Katalogda bulunanlar</h3>
+      <p id="katalog-not" class="soluk katalog-not"></p>
+      <div id="katalog" class="liste"></div>
+      <button id="katalog-daha" class="dugme ikincil" type="button" hidden>Daha fazla göster</button>
+    </section>
+  </section>
 
-  <section id="katalog-bolum" class="katalog-bolum" hidden aria-live="polite">
-    <h2 id="katalog-baslik">Katalogda bulunanlar</h2>
-    <p id="katalog-not" class="katalog-not"></p>
-    <div id="katalog" class="liste"></div>
-    <button id="katalog-daha" class="dugme ikincil" type="button" hidden>Daha fazla göster</button>
+  <section id="nasil" class="kap bolum">
+    <h2 class="bolum-baslik">Nasıl çalışır?</h2>
+    <div class="adimlar">
+      <div class="adim"><span class="adim-no">1</span><h3>Takip ederiz</h3><p>Fırsatları farklı kaynaklardan toplar, her ürünün fiyatını ve stoğunu mağaza sayfasında tek tek kontrol ederiz.</p></div>
+      <div class="adim"><span class="adim-no">2</span><h3>Karşılaştırırız</h3><p>Yeni fiyatı ürünün son 90 günde kaydedilen fiyatlarıyla kıyaslar, indirimin gerçek olup olmadığını etiketleriz.</p></div>
+      <div class="adim"><span class="adim-no">3</span><h3>Haber veririz</h3><p>Gerçek düşüşler burada ve Telegram kanalında yayınlanır. Tükenen ya da fiyatı yükselen ürün listeden kendiliğinden çıkar.</p></div>
+    </div>
+    <div class="aciklama">
+      <span class="rozet k-dip">Gerçek indirim — dönemin en düşük fiyatı</span>
+      <span class="rozet k-iyi">İyi fiyat — normal fiyatın altında</span>
+      <span class="rozet k-sisirilmis">Şişirilmiş — etiket yüksek, fiyat her zamanki gibi</span>
+      <span class="rozet k-yok">Geçmiş az — henüz yeterli kayıt yok</span>
+    </div>
+  </section>
+
+  <section id="tg-bant" class="kap bolum" hidden>
+    <div class="bant">
+      <div>
+        <h2>Düşünce <span>haber verelim.</span></h2>
+        <p>Gerçek indirimler düştüğü anda {{SITE_ADI}} Telegram kanalına gelir. Uygulama indirmeden, ücretsiz.</p>
+      </div>
+      <a class="dugme buyuk turuncu" target="_blank" rel="noopener" href="https://t.me/{{TELEGRAM}}">Telegram kanalına katıl</a>
+    </div>
   </section>
 </main>
 
 <footer class="alt">
-  <div class="kap">
-    <p><b>Nasıl çalışır?</b> Fırsatlar farklı kaynaklardan toplanır; listeye yalnızca mağaza sayfasında fiyatı ve stoğu doğrulananlar girer. Aramada çıkan “katalog” ürünleri ise mağazaların bize ilettiği ürün listelerinden gelir; fiyatı mağazanın bildirdiği fiyattır, tek tek teyit edilmez. Fiyatlar mağaza tarafından her an değiştirilebilir. Satın almadan önce mağazadaki fiyatı kontrol edin.</p>
-    <p>Bu sayfadaki bazı bağlantılar satış ortaklığı bağlantısı olabilir; bu bağlantılardan yapılan alışverişten {{SITE_ADI}} komisyon alabilir, sizin ödediğiniz fiyat değişmez. Sitede çerez ve reklam takibi kullanılmaz.</p>
-    <p><a href="yasal.html">Yasal bilgiler ve iletişim</a> · © {{YIL}} {{SITE_ADI}}</p>
+  <div class="kap alt-ic">
+    <div>
+      <span class="marka-ad kucuk-marka">{{SITE_ADI}}</span>
+      <p>{{SITE_ADI}} bağımsız bir fiyat takip sitesidir; satış yapmaz. Sitedeki bazı bağlantılar satış ortaklığı (reklam) bağlantısıdır; bu bağlantılardan alışveriş yaptığınızda {{SITE_ADI}} komisyon kazanabilir, ödediğiniz fiyat değişmez. İndirim değerlendirmeleri kaydedilen fiyatlara göre otomatik yapılır. Aramada çıkan “katalog” ürünlerinin fiyatı mağazanın bildirdiği fiyattır, tek tek teyit edilmez. Fiyat ve stoklar mağazalarca anlık değişebilir; satın almadan önce mağazadaki son fiyatı kontrol edin. Sitede çerez ve reklam takibi kullanılmaz.</p>
+    </div>
+    <nav aria-label="Alt menü" class="alt-menu">
+      <a href="yasal.html">Yasal bilgiler</a>
+      <a href="yasal.html#kvkk">Kişisel veriler</a>
+      <a href="yasal.html#iletisim">İletişim</a>
+    </nav>
   </div>
+  <p class="kap telif">© {{YIL}} {{SITE_ADI}}</p>
 </footer>
+
+<dialog id="detay" class="detay" aria-labelledby="d-baslik">
+  <div class="detay-ic">
+    <button class="kapat" type="button" aria-label="Kapat" data-kapat><svg width="22" height="22" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <div class="detay-ust">
+      <div class="gorsel buyuk-gorsel" data-gorsel></div>
+      <div class="detay-bilgi">
+        <div class="soluk kucuk" data-magaza></div>
+        <h2 id="d-baslik" class="detay-baslik" data-baslik></h2>
+        <div class="fiyat-satir"><span class="fiyat dev" data-fiyat></span><s class="eski" data-eski></s><span class="oran" data-oran></span></div>
+        <div class="karar-kutu" data-karar-kutu></div>
+      </div>
+    </div>
+    <h3 class="ara-baslik">Fiyat geçmişi <small class="soluk" data-donem></small></h3>
+    <div class="grafik-kutu buyuk-grafik" data-grafik></div>
+    <div class="kutucuklar dort">
+      <div class="kutucuk"><span>Şu an</span><b data-simdi></b></div>
+      <div class="kutucuk"><span>Dönem en düşük</span><b data-en-dusuk></b></div>
+      <div class="kutucuk"><span>Normal fiyat</span><b data-normal></b></div>
+      <div class="kutucuk"><span>Dönem en yüksek</span><b data-en-yuksek></b></div>
+    </div>
+    <ul class="notlar" data-notlar></ul>
+    <div class="detay-alt">
+      <span class="teyit" data-teyit></span>
+      <a class="dugme buyuk" target="_blank" rel="nofollow sponsored noopener" data-git>Mağazada gör</a>
+    </div>
+  </div>
+</dialog>
 
 <template id="kart-sablon">
   <article class="kart">
-    <a class="gorsel" target="_blank" rel="nofollow sponsored noopener"><img alt="" loading="lazy" referrerpolicy="no-referrer"></a>
-    <div class="govde">
-      <div class="ust-satir"><span class="magaza"></span><span class="yeni" hidden>Yeni</span></div>
-      <h2 class="baslik"><a target="_blank" rel="nofollow sponsored noopener"></a></h2>
-      <div class="fiyatlar"><span class="fiyat"></span><s class="eski"></s><span class="oran"></span></div>
-      <ul class="notlar"></ul>
-      <div class="alt-satir">
-        <span class="teyit"></span>
-        <a class="dugme git" target="_blank" rel="nofollow sponsored noopener">Mağazada gör</a>
-      </div>
+    <a class="gorsel" target="_blank" rel="nofollow sponsored noopener"><img alt="" loading="lazy" referrerpolicy="no-referrer"><span class="oran-rozet" hidden></span></a>
+    <div class="ust-satir"><span class="magaza"></span><span class="sag"><span class="yeni" hidden>Yeni</span><span class="zaman"></span></span></div>
+    <h3 class="baslik"><a target="_blank" rel="nofollow sponsored noopener"></a></h3>
+    <div class="fiyat-satir"><span class="fiyat"></span><s class="eski"></s></div>
+    <div class="karar-satir"><span class="rozet"></span><span class="mini"></span></div>
+    <p class="ozet-satir"></p>
+    <ul class="notlar"></ul>
+    <div class="kart-alt">
+      <a class="dugme git" target="_blank" rel="nofollow sponsored noopener">Fırsata git</a>
+      <button class="dugme ikincil kare" type="button" aria-label="Fiyat geçmişi"><svg width="20" height="20" viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/></svg></button>
     </div>
   </article>
 </template>

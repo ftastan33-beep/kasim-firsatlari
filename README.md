@@ -191,3 +191,25 @@ Feed; mağazanın ya da satış ortaklığı ağının (ör. Admitad) hazırlad�
 - **Ortaklık:** ağdan gelen feed'in linkleri zaten ortaklık linkidir (kutuyu işaretleyin). Mağazanın düz feed'inde
   linkler `yayin.json`daki `ortaklik` ayarıyla ya da `--feed-sablon "https://…{url_kodlu}"` ile çevrilir.
 - Komutlar: `--feed-liste`, `--feed-sil KOD`, `--feed-guncelle`, `--katalog-ara "kelime"`.
+
+## 3.7 — Herkese açık site Düşero oldu
+
+Herkese açık sitenin (eski adıyla Teyitli Fırsat) adı ve görünümü **Düşero** olarak yenilendi. Yayın hattı aynı:
+program → `yayin.py` → GitHub deposu → GitHub Pages. Kayıtlı ayarlarda eski varsayılan ad ("Teyitli Fırsat") duruyorsa
+kendiliğinden Düşero'ya geçer; elle yazılmış bir ad korunur.
+
+- **Gerçek indirim kontrolü:** her ürünün son 90 gündeki fiyat kayıtları siteye gönderilir (en fazla 30 nokta). Kart iki oran
+  gösterir: mağazanın üstü çizili fiyata göre oranı ve kayıtların ortancasına (“normal fiyat”) göre **gerçek düşüş**.
+
+  | Rozet | Ölçüt |
+  |---|---|
+  | Gerçek indirim | En az 7 günlük kayıtta dönemin en düşüğü ve normal fiyatın en az %3 altı |
+  | İyi fiyat | Normal fiyatın en az %5 altı |
+  | Şişirilmiş indirim | Üstü çizili fiyat var ama fiyat normal seviyede (ya da üstü çizili fiyat kayıtlarda hiç görülmedi) |
+  | Geçmiş az | 2'den az kayıt; değerlendirme yapılmaz |
+
+- **Arayüz:** “Günün düşüşü” vitrini, kategori çipleri, mağaza filtresi, “Sadece gerçek indirimler” anahtarı, gerçek düşüşe göre
+  sıralama, fiyat geçmişi grafiğiyle ürün ayrıntısı (adres `#u-ÜRÜNKODU` ile paylaşılabilir), koyu tema, telefonda iki sütun.
+- **Telegram kanalı** yalnızca gerçek düşüşleri paylaşır; şişirilmiş indirimler sitede etiketli durur, kanala gönderilmez.
+- Kart görseli için önce mağaza sayfasından okunan görsel kullanılır.
+- 3.6'daki katalog araması yeni arayüzde de çalışır: arama, teyitli fırsatların altında “Katalogda bulunanlar” bölümünü açar.

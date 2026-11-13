@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Teyitli Firsat - site kurulumu
+title Dusero - site kurulumu
 cd /d "%~dp0"
 rem Program klasorunde "veri" klasoru varsa ayarlar ve veriler orada tutulur (tasinabilir kurulum)
 if exist "%~dp0veri\" set "KASIM_FIRSAT_DIZIN=%~dp0veri"

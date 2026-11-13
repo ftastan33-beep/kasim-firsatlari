@@ -1,4 +1,4 @@
-TEYİTLİ FIRSAT — HERKESE AÇIK SİTE KURULUMU (bir kez, ~15 dakika)
+DÜŞERO — HERKESE AÇIK SİTE KURULUMU (bir kez, ~15 dakika)
 =================================================================
 
 Nasıl çalışır?
@@ -23,7 +23,7 @@ Nasıl çalışır?
 
 3) PROGRAMA TANITIN
    Program klasöründe "Yayin-Kur.bat" dosyasına çift tıklayın ve soruları cevaplayın:
-   - Site adı (Enter = Teyitli Fırsat)
+   - Site adı (Enter = Düşero)
    - GitHub deposu: kullanıcıadınız/teyitli-firsat
    - Anahtar: 2. adımda kopyaladığınızı yapıştırın (ekranda görünmez, bu normal)
    - İletişim e-postası: yasal sayfada görünür (içerik kaldırma talepleri için)
