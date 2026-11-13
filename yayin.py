@@ -288,11 +288,15 @@ def yayin_listesi(firsatlar, ayar, an=None):
 # ---------------------------------------------------------------------------
 # Site dosyaları
 # ---------------------------------------------------------------------------
+def telegram_kullanici(ayar):
+    """Kanalın herkese açık kullanıcı adı (@ olmadan); "kanal" sayısal kimlik olabilir."""
+    tg_ayar = ayar.get("telegram") or {}
+    return (tg_ayar.get("kullanici") or ("" if str(tg_ayar.get("kanal", "")).startswith("-") else str(tg_ayar.get("kanal", "")))).lstrip("@")
+
+
 def site_dosyalari(sablon_dizini, ayar, liste, surum):
     """{yol: bytes}. Şablondaki {{SITE_ADI}} gibi yer tutucular doldurulur."""
-    tg_ayar = ayar.get("telegram") or {}
-    # Sitedeki Telegram düğmesi kanalın herkese açık kullanıcı adına gider; "kanal" sayısal kimlik olabilir.
-    tg = (tg_ayar.get("kullanici") or ("" if tg_ayar.get("kanal", "").startswith("-") else tg_ayar.get("kanal", ""))).lstrip("@")
+    tg = telegram_kullanici(ayar)
     yerine = {
         "{{SITE_ADI}}": html.escape(ayar.get("site_adi") or VARSAYILAN["site_adi"]),
         "{{SLOGAN}}": html.escape(ayar.get("slogan") or VARSAYILAN["slogan"]),
@@ -680,7 +684,7 @@ class Yayinci:
         gh = self.ayar.get("github") or {}
         return {"hazir": self.hazir(), "depo": gh.get("depo"), "son": self.durum.get("son"),
                 "urun": self.son_sayi, "hata": self.son_hata,
-                "adres": site_adresi(self.ayar)}
+                "adres": site_adresi(self.ayar), "telegram": telegram_kullanici(self.ayar)}
 
     def dongu(self):
         """Doğrulama turları bittikçe (en sık 10 dakikada bir) yayınlar."""
